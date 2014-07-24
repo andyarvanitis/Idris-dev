@@ -41,7 +41,7 @@ data JSAnnotation = JSConstructor deriving Eq
 
 
 instance Show JSAnnotation where
-  show JSConstructor = "constructor"
+  show JSConstructor = "class"
 
 
 data JS = JSRaw String
@@ -124,7 +124,7 @@ compileJS' :: Int -> JS -> T.Text
 compileJS' indent JSNoop = ""
 
 compileJS' indent (JSAnnotation annotation js) =
-    "/** @"
+   ""
   `T.append` T.pack (show annotation)
   `T.append` " */\n"
   `T.append` compileJS' indent js
@@ -139,27 +139,27 @@ compileJS' indent (JSIdent ident) =
   T.pack ident
 
 compileJS' indent (JSFunction args body) =
-      T.replicate indent " " `T.append` "function("
+   T.replicate indent " " `T.append` "|"
    `T.append` T.intercalate "," (map T.pack args)
-   `T.append` "){\n"
+   `T.append` "|\n"
    `T.append` compileJS' (indent + 2) body
-   `T.append` "\n}\n"
+   `T.append` "\nend\n"
 
 compileJS' indent (JSType ty)
-  | JSIntTy     <- ty = "i$Int"
-  | JSStringTy  <- ty = "i$String"
-  | JSIntegerTy <- ty = "i$Integer"
-  | JSFloatTy   <- ty = "i$Float"
-  | JSCharTy    <- ty = "i$Char"
-  | JSPtrTy     <- ty = "i$Ptr"
-  | JSForgotTy  <- ty = "i$Forgot"
+  | JSIntTy     <- ty = "i_Int"
+  | JSStringTy  <- ty = "i_String"
+  | JSIntegerTy <- ty = "i_Integer"
+  | JSFloatTy   <- ty = "i_Float"
+  | JSCharTy    <- ty = "i_Char"
+  | JSPtrTy     <- ty = "i_Ptr"
+  | JSForgotTy  <- ty = "i_Forgot"
 
 compileJS' indent (JSSeq seq) =
-  T.intercalate ";\n" (
+  T.intercalate "\n" (
     map (
       (T.replicate indent " " `T.append`) . (compileJS' indent)
     ) $ filter (/= JSNoop) seq
-  ) `T.append` ";"
+  ) `T.append` ""
 
 compileJS' indent (JSReturn val) =
   "return " `T.append` compileJS' indent val
@@ -173,8 +173,8 @@ compileJS' indent (JSApp lhs rhs)
         args = T.intercalate "," $ map (compileJS' 0) rhs
 
 compileJS' indent (JSNew name args) =
-    "new "
-  `T.append` T.pack name
+  T.pack name
+  `T.append` ".new"
   `T.append` "("
   `T.append` T.intercalate "," (map (compileJS' 0) args)
   `T.append` ")"
@@ -201,13 +201,13 @@ compileJS' indent (JSProj obj field)
     compileJS' indent obj `T.append` ('.' `T.cons` T.pack field)
 
 compileJS' indent JSNull =
-  "null"
+  "nil"
 
 compileJS' indent JSUndefined =
   "undefined"
 
 compileJS' indent JSThis =
-  "this"
+  "self"
 
 compileJS' indent JSTrue =
   "true"
@@ -224,26 +224,26 @@ compileJS' indent (JSString str) =
 compileJS' indent (JSNum num)
   | JSInt i                    <- num = T.pack (show i)
   | JSFloat f                  <- num = T.pack (show f)
-  | JSInteger JSBigZero        <- num = T.pack "i$ZERO"
-  | JSInteger JSBigOne         <- num = T.pack "i$ONE"
+  | JSInteger JSBigZero        <- num = T.pack "i_ZERO"
+  | JSInteger JSBigOne         <- num = T.pack "i_ONE"
   | JSInteger (JSBigInt i)     <- num = T.pack (show i)
   | JSInteger (JSBigIntExpr e) <- num =
-      "i$bigInt(" `T.append` compileJS' indent e `T.append` ")"
+      "i_bigInt(" `T.append` compileJS' indent e `T.append` ")"
 
 compileJS' indent (JSAssign lhs rhs) =
   compileJS' indent lhs `T.append` " = " `T.append` compileJS' indent rhs
 
 compileJS' 0 (JSAlloc name (Just val@(JSNew _ _))) =
-    "var "
-  `T.append` T.pack name
+  T.pack name
   `T.append` " = "
   `T.append` compileJS' 0 val
-  `T.append` ";\n"
+  `T.append` "\n"
 
 compileJS' indent (JSAlloc name val) =
-    "var "
-  `T.append` T.pack name
-  `T.append` maybe "" ((" = " `T.append`) . compileJS' indent) val
+    let expr = maybe "" (compileJS' indent) val
+    in case val of (Nothing)               -> ""
+                   (Just (JSFunction _ _)) -> T.pack name `T.append` " = Proc.new do " `T.append`  expr                   
+                   (_)                     -> T.pack name `T.append` " = " `T.append` expr
 
 compileJS' indent (JSIndex lhs rhs) =
     compileJS' indent lhs
@@ -252,27 +252,27 @@ compileJS' indent (JSIndex lhs rhs) =
   `T.append` "]"
 
 compileJS' indent (JSCond branches) =
-  T.intercalate " else " $ map createIfBlock branches
+  T.intercalate "els" $ map createIfBlock branches
   where
     createIfBlock (JSNoop, e@(JSSeq _)) =
-         "{\n"
+         "e\n"
       `T.append` compileJS' (indent + 2) e
-      `T.append` "\n" `T.append` T.replicate indent " " `T.append` "}"
+      `T.append` "\n" `T.append` T.replicate indent " " `T.append` "end"
     createIfBlock (JSNoop, e) =
-         "{\n"
+         "e\n"
       `T.append` compileJS' (indent + 2) e
-      `T.append` ";\n" `T.append` T.replicate indent " " `T.append` "}"
+      `T.append` "\n" `T.append` T.replicate indent " " `T.append` "end"
     createIfBlock (cond, e@(JSSeq _)) =
-         "if (" `T.append` compileJS' indent cond `T.append`") {\n"
+         "if " `T.append` compileJS' indent cond `T.append`" then\n"
       `T.append` compileJS' (indent + 2) e
-      `T.append` "\n" `T.append` T.replicate indent " " `T.append` "}"
+      `T.append` "\n" `T.append` T.replicate indent " " `T.append` "end"
     createIfBlock (cond, e) =
-         "if (" `T.append` compileJS' indent cond `T.append`") {\n"
+         "if " `T.append` compileJS' indent cond `T.append`" then\n"
       `T.append` T.replicate (indent + 2) " "
       `T.append` compileJS' (indent + 2) e
-      `T.append` ";\n"
+      `T.append` "\n"
       `T.append` T.replicate indent " "
-      `T.append` "}"
+      `T.append` ""
 
 compileJS' indent (JSSwitch val [(_,JSSeq seq)] Nothing) =
   let (h,t) = splitAt 1 seq in
@@ -284,25 +284,25 @@ compileJS' indent (JSSwitch val [(_,JSSeq seq)] Nothing) =
       )
 
 compileJS' indent (JSSwitch val branches def) =
-     "switch(" `T.append` compileJS' indent val `T.append` "){\n"
+     "case " `T.append` compileJS' indent val `T.append` "\n"
   `T.append` T.concat (map mkBranch branches)
   `T.append` mkDefault def
-  `T.append` T.replicate indent " " `T.append` "}"
+  `T.append` T.replicate indent " " `T.append` "end"
   where
     mkBranch :: (JS, JS) -> T.Text
     mkBranch (tag, code) =
          T.replicate (indent + 2) " "
-      `T.append` "case "
+      `T.append` "when "
       `T.append` compileJS' indent tag
-      `T.append` ":\n"
+      `T.append` "\n"
       `T.append` compileJS' (indent + 4) code
       `T.append` "\n"
-      `T.append` (T.replicate (indent + 4) " " `T.append` "break;\n")
+      `T.append` (T.replicate (indent + 4) " " `T.append` "\n")
 
     mkDefault :: Maybe JS -> T.Text
     mkDefault Nothing = ""
     mkDefault (Just def) =
-         T.replicate (indent + 2) " " `T.append` "default:\n"
+         T.replicate (indent + 2) " " `T.append` "else\n"
       `T.append` compileJS' (indent + 4)def
       `T.append` "\n"
 
@@ -323,9 +323,9 @@ compileJS' indent (JSParens js) =
   "(" `T.append` compileJS' indent js `T.append` ")"
 
 compileJS' indent (JSWhile cond body) =
-     "while (" `T.append` compileJS' indent cond `T.append` ") {\n"
+     "while " `T.append` compileJS' indent cond `T.append` " do\n"
   `T.append` compileJS' (indent + 2) body
-  `T.append` "\n" `T.append` T.replicate indent " " `T.append` "}"
+  `T.append` "\n" `T.append` T.replicate indent " " `T.append` "end"
 
 compileJS' indent (JSWord word)
   | JSWord8  b <- word =
@@ -335,10 +335,10 @@ compileJS' indent (JSWord word)
   | JSWord32 b <- word =
       "new Uint32Array([" `T.append` T.pack (show b) `T.append` "])"
   | JSWord64 b <- word =
-      "i$bigInt(\"" `T.append` T.pack (show b) `T.append` "\")"
+      "i_bigInt(\"" `T.append` T.pack (show b) `T.append` "\")"
 
 jsInstanceOf :: JS -> String -> JS
-jsInstanceOf obj cls = JSBinOp "instanceof" obj (JSIdent cls)
+jsInstanceOf obj cls = jsMeth obj "instance_of?" [(JSIdent cls)]
 
 jsOr :: JS -> JS -> JS
 jsOr lhs rhs = JSBinOp "||" lhs rhs
@@ -353,7 +353,7 @@ jsCall :: String -> [JS] -> JS
 jsCall fun args = JSApp (JSIdent fun) args
 
 jsTypeOf :: JS -> JS
-jsTypeOf js = JSPreOp "typeof " js
+jsTypeOf js = JSPreOp ".is_a? " js
 
 jsEq :: JS -> JS -> JS
 jsEq lhs@(JSNum (JSInteger _)) rhs = JSApp (JSProj lhs "equals") [rhs]

@@ -1,92 +1,94 @@
-/** @constructor */
-var i$VM = function() {
-  this.valstack = [];
-  this.valstack_top = 0;
-  this.valstack_base = 0;
+class I_VM 
+  attr_accessor :valstack, :valstack_top, :valstack_base, :ret, :callstack
+  def initialize()
+    @valstack = []
+    @valstack_top = 0
+    @valstack_base = 0
+    @ret = nil
+    @callstack = []
+  end
+end
 
-  this.ret = null;
+i_valstack = []
+i_callstack = []
 
-  this.callstack = [];
-}
+class I_CON
+  attr_accessor :tag, :args, :app, :ev
+  def initialize(tag,args,app,ev)
+    @tag = tag
+    @args = args
+    @app = app
+    @ev = ev
+  end
+end
 
-var i$vm;
-var i$valstack;
-var i$valstack_top;
-var i$valstack_base;
-var i$ret;
-var i$callstack;
+def i_SCHED(vm)
+  $i_vm = vm
+  $i_valstack = vm.valstack
+  $i_valstack_top = vm.valstack_top
+  $i_valstack_base = vm.valstack_base
+  $i_ret = vm.ret
+  $i_callstack = vm.callstack
+end
 
-/** @constructor */
-var i$CON = function(tag,args,app,ev) {
-  this.tag = tag;
-  this.args = args;
-  this.app = app;
-  this.ev = ev;
-}
+def i_SLIDE(args)
+  for i in 0 ... args
+    $i_valstack[$i_valstack_base + i] = $i_valstack[$i_valstack_top + i]
+  end
+end
 
-var i$SCHED = function(vm) {
-  i$vm = vm;
-  i$valstack = vm.valstack;
-  i$valstack_top = vm.valstack_top;
-  i$valstack_base = vm.valstack_base;
-  i$ret = vm.ret;
-  i$callstack = vm.callstack;
-}
+def i_PROJECT(val,loc,arity)
+  for i in 0 ... arity
+    $i_valstack[$i_valstack_base + i + loc] = val.args[i]
+  end
+end
 
-var i$SLIDE = function(args) {
-  for (var i = 0; i < args; ++i)
-    i$valstack[i$valstack_base + i] = i$valstack[i$valstack_top + i];
-}
+def i_CALL(fun,args)
+   $i_callstack.push(args)
+   $i_callstack.push(fun)
+ end
 
-var i$PROJECT = function(val,loc,arity) {
-  for (var i = 0; i < arity; ++i)
-    i$valstack[i$valstack_base + i + loc] = val.args[i];
-}
+# var i$ffiWrap = function(fid,oldbase,myoldbase) {
+#   return function() {
+#     i$callstack = [];
+#
+#     var res = fid;
+#
+#     for(var i = 0; i < arguments.length; ++i) {
+#       while (res instanceof i$CON) {
+#         i$valstack_top += 1;
+#         i$valstack[i$valstack_top] = res;
+#         i$valstack[i$valstack_top + 1] = arguments[i];
+#         i$SLIDE(2);
+#         i$valstack_top = i$valstack_base + 2;
+#         i$CALL(_idris__123_APPLY0_125_,[oldbase])
+#         while (i$callstack.length) {
+#           var func = i$callstack.pop();
+#           var args = i$callstack.pop();
+#           func.apply(this,args);
+#         }
+#         res = i$ret;
+#       }
+#     }
+#
+#     i$callstack = i$vm.callstack;
+#
+#     return i$ret;
+#   }
+# }
+#
+# var i$charCode = function(str) {
+#   if (typeof str == "string")
+#     return str.charCodeAt(0);
+#   else
+#     return str;
+# }
+#
+# var i$fromCharCode = function(chr) {
+#   if (typeof chr == "string")
+#     return chr;
+#   else
+#     return String.fromCharCode(chr);
+# }
 
-var i$CALL = function(fun,args) {
-  i$callstack.push(args);
-  i$callstack.push(fun);
-}
 
-var i$ffiWrap = function(fid,oldbase,myoldbase) {
-  return function() {
-    i$callstack = [];
-
-    var res = fid;
-
-    for(var i = 0; i < arguments.length; ++i) {
-      while (res instanceof i$CON) {
-        i$valstack_top += 1;
-        i$valstack[i$valstack_top] = res;
-        i$valstack[i$valstack_top + 1] = arguments[i];
-        i$SLIDE(2);
-        i$valstack_top = i$valstack_base + 2;
-        i$CALL(_idris__123_APPLY0_125_,[oldbase])
-        while (i$callstack.length) {
-          var func = i$callstack.pop();
-          var args = i$callstack.pop();
-          func.apply(this,args);
-        }
-        res = i$ret;
-      }
-    }
-
-    i$callstack = i$vm.callstack;
-
-    return i$ret;
-  }
-}
-
-var i$charCode = function(str) {
-  if (typeof str == "string")
-    return str.charCodeAt(0);
-  else
-    return str;
-}
-
-var i$fromCharCode = function(chr) {
-  if (typeof chr == "string")
-    return chr;
-  else
-    return String.fromCharCode(chr);
-}

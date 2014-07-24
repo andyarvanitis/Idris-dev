@@ -205,56 +205,27 @@ codegenJS_all target definitions includes libs filename outputType = do
           JSFunction [] (
             case target of
                  Node       -> mainFun
-                 JavaScript -> jsMain
+                 JavaScript -> mainFun
           )
         )
 
-      jsMain :: JS
-      jsMain =
-        JSCond [ (exists document `jsAnd` isReady, mainFun)
-               , (exists window, windowMainFun)
-               , (JSTrue, mainFun)
-               ]
-        where
-          exists :: JS -> JS
-          exists js = jsTypeOf js `jsNotEq` JSString "undefined"
-
-          window :: JS
-          window = JSIdent "window"
-
-          document :: JS
-          document = JSIdent "document"
-
-          windowMainFun :: JS
-          windowMainFun =
-            jsMeth window "addEventListener" [ JSString "DOMContentLoaded"
-                                             , JSFunction [] ( mainFun )
-                                             , JSFalse
-                                             ]
-
-          isReady :: JS
-          isReady = JSParens $ readyState `jsEq` JSString "complete" `jsOr` readyState `jsEq` JSString "loaded"
-
-          readyState :: JS
-          readyState = JSProj (JSIdent "document") "readyState"
-
       mainFun :: JS
       mainFun =
-        JSSeq [ JSAlloc "vm" (Just $ JSNew "i$VM" [])
-              , JSApp (JSIdent "i$SCHED") [JSIdent "vm"]
+        JSSeq [ JSAlloc "vm" (Just $ JSNew "I_VM" [])
+              , JSApp (JSIdent "i_SCHED") [JSIdent "vm"]
               , JSApp (
-                  JSIdent (translateName (sMN 0 "runMain"))
+                  JSIdent (translateName (sMN 0 "runMain") ++ ".call")
                 ) [JSNum (JSInt 0)]
-              , JSWhile (JSProj jsCALLSTACK "length") (
+              , JSWhile (JSProj jsCALLSTACK "length > 0") (
                   JSSeq [ JSAlloc "func" (Just jsPOP)
                         , JSAlloc "args" (Just jsPOP)
-                        , JSApp (JSProj (JSIdent "func") "apply") [JSThis, JSIdent "args"]
+                        , JSApp (JSProj (JSIdent "func") "call") [JSIdent "*args"]
                         ]
                 )
               ]
 
       invokeMain :: T.Text
-      invokeMain = compileJS $ JSApp (JSIdent "main") []
+      invokeMain = compileJS $ JSApp (JSIdent "main.call") []
 
 optimizeConstructors :: [JS] -> ([JS], [JS])
 optimizeConstructors js =
@@ -265,10 +236,10 @@ optimizeConstructors js =
     allocCon (name, con) = JSAlloc name (Just con)
 
     newConstructor :: Int -> String
-    newConstructor n = "i$CON$" ++ show n
+    newConstructor n = "$i_CON_" ++ show n
 
     optimizeConstructor' :: JS -> State (M.Map Int (String, JS)) JS
-    optimizeConstructor' js@(JSNew "i$CON" [ JSNum (JSInt tag)
+    optimizeConstructor' js@(JSNew "I_CON" [ JSNum (JSInt tag)
                                            , JSArray []
                                            , a
                                            , e
@@ -307,7 +278,7 @@ collectSplitFunctions (fun, splits) = map generateSplitFunction splits ++ [fun]
   where
     generateSplitFunction :: (Int,JS) -> JS
     generateSplitFunction (depth, JSAlloc name fun) =
-      JSAlloc (name ++ "$" ++ show depth) fun
+      JSAlloc (name ++ "_" ++ show depth) fun
 
 splitFunction :: JS -> RWS () [(Int,JS)] Int JS
 splitFunction (JSAlloc name (Just (JSFunction args body@(JSSeq _)))) = do
@@ -344,12 +315,12 @@ splitFunction (JSAlloc name (Just (JSFunction args body@(JSSeq _)))) = do
       splitSequence js = return js
 
       isCall :: JS -> Bool
-      isCall (JSApp (JSIdent "i$CALL") _) = True
+      isCall (JSApp (JSIdent "i_CALL") _) = True
       isCall _                            = False
 
       newCall :: Int -> JS
       newCall depth =
-        JSApp (JSIdent "i$CALL") [ JSIdent $ name ++ "$" ++ show depth
+        JSApp (JSIdent "i_CALL") [ JSIdent $ name ++ "_" ++ show depth
                                  , JSArray [jsOLDBASE, jsMYOLDBASE]
                                  ]
 
@@ -366,9 +337,9 @@ translateDecl info (name@(MN 0 fun), bc)
       ++ [ JSAlloc (
                translateName name
            ) (Just $ JSFunction ["oldbase"] (
-               JSSeq $ JSAlloc "myoldbase" Nothing : map (translateBC info) (fst body) ++ [
-                 JSCond [ ( (translateReg $ caseReg (snd body)) `jsInstanceOf` "i$CON" `jsAnd` (JSProj (translateReg $ caseReg (snd body)) "app")
-                          , JSApp (JSProj (translateReg $ caseReg (snd body)) "app") [jsOLDBASE, jsMYOLDBASE]
+               JSSeq $ JSAlloc "myoldbase" (Just . JSNum $ JSInt 0) : map (translateBC info) (fst body) ++ [
+                 JSCond [ ( (translateReg $ caseReg (snd body)) `jsInstanceOf` "I_CON" `jsAnd` (JSProj (translateReg $ caseReg (snd body)) "app")
+                          , JSApp (JSProj (translateReg $ caseReg (snd body)) "app.call") [jsOLDBASE, jsMYOLDBASE]
                           )
                           , ( JSNoop
                             , JSSeq $ map (translateBC info) (defaultCase (snd body))
@@ -385,8 +356,8 @@ translateDecl info (name@(MN 0 fun), bc)
                translateName name
            ) (Just $ JSFunction ["oldbase"] (
                JSSeq $ JSAlloc "myoldbase" Nothing : map (translateBC info) (fst body) ++ [
-                 JSCond [ ( (translateReg $ caseReg (snd body)) `jsInstanceOf` "i$CON" `jsAnd` (JSProj (translateReg $ caseReg (snd body)) "ev")
-                          , JSApp (JSProj (translateReg $ caseReg (snd body)) "ev") [jsOLDBASE, jsMYOLDBASE]
+                 JSCond [ ( (translateReg $ caseReg (snd body)) `jsInstanceOf` "I_CON" `jsAnd` (JSProj (translateReg $ caseReg (snd body)) "ev")
+                          , JSApp (JSProj (translateReg $ caseReg (snd body)) "ev.call") [jsOLDBASE, jsMYOLDBASE]
                           )
                           , ( JSNoop
                             , JSSeq $ map (translateBC info) (defaultCase (snd body))
@@ -421,7 +392,7 @@ translateDecl info (name@(MN 0 fun), bc)
     prepBranch :: (Int, [BC]) -> JS
     prepBranch (tag, code) =
       JSAlloc (
-        translateName name ++ "$" ++ show tag
+        translateName name ++ "_" ++ show tag
       ) (Just $ JSFunction ["oldbase", "myoldbase"] (
           JSSeq $ map (translateBC info) code
         )
@@ -431,7 +402,7 @@ translateDecl info (name, bc) =
   [ JSAlloc (
        translateName name
      ) (Just $ JSFunction ["oldbase"] (
-         JSSeq $ JSAlloc "myoldbase" Nothing : map (translateBC info)bc
+         JSSeq $ JSAlloc "myoldbase" (Just . JSNum $ JSInt 0) : map (translateBC info)bc
        )
      )
   ]
@@ -496,7 +467,7 @@ translateChar ch
        '\CAN', '\EM',  '\SUB', '\ESC', '\FS',  '\GS',  '\RS',  '\US']
 
 translateName :: Name -> String
-translateName n = "_idris_" ++ concatMap cchar (showCG n)
+translateName n = "$_idris_" ++ concatMap cchar (showCG n)
   where cchar x | isAlphaNum x = [x]
                 | otherwise    = "_" ++ show (fromEnum x) ++ "_"
 
@@ -509,13 +480,13 @@ jsASSIGNCONST _ r c = JSAssign (translateReg r) (translateConstant c)
 jsCALL :: CompileInfo -> Name -> JS
 jsCALL _ n =
   JSApp (
-    JSIdent "i$CALL"
+    JSIdent "i_CALL"
   ) [JSIdent (translateName n), JSArray [jsMYOLDBASE]]
 
 jsTAILCALL :: CompileInfo -> Name -> JS
 jsTAILCALL _ n =
   JSApp (
-    JSIdent "i$CALL"
+    JSIdent "i_CALL"
   ) [JSIdent (translateName n), JSArray [jsOLDBASE]]
 
 jsFOREIGN :: CompileInfo -> Reg -> String -> [(FType, Reg)] -> JS
@@ -525,7 +496,7 @@ jsFOREIGN _ reg n args
       JSAssign (
         translateReg reg
       ) (
-        JSApp (JSIdent "i$putStr") [translateReg arg]
+        JSApp (JSIdent "puts") [translateReg arg]
       )
 
   | n == "isNull"
@@ -553,12 +524,12 @@ jsFOREIGN _ reg n args
       generateWrapper :: (FType, Reg) -> JS
       generateWrapper (ty, reg)
         | FFunction   <- ty =
-            JSApp (JSIdent "i$ffiWrap") [ translateReg reg
+            JSApp (JSIdent "i_ffiWrap") [ translateReg reg
                                         , JSIdent "oldbase"
                                         , JSIdent "myoldbase"
                                         ]
         | FFunctionIO <- ty =
-            JSApp (JSIdent "i$ffiWrap") [ translateReg reg
+            JSApp (JSIdent "i_ffiWrap") [ translateReg reg
                                         , JSIdent "oldbase"
                                         , JSIdent "myoldbase"
                                         ]
@@ -595,18 +566,18 @@ jsERROR _ = JSError
 
 jsSLIDE :: CompileInfo -> Int -> JS
 jsSLIDE _ 1 = JSAssign (jsLOC 0) (jsTOP 0)
-jsSLIDE _ n = JSApp (JSIdent "i$SLIDE") [JSNum (JSInt n)]
+jsSLIDE _ n = JSApp (JSIdent "i_SLIDE") [JSNum (JSInt n)]
 
 jsMKCON :: CompileInfo -> Reg -> Int -> [Reg] -> JS
 jsMKCON info r t rs =
   JSAssign (translateReg r) (
-    JSNew "i$CON" [ JSNum (JSInt t)
+    JSNew "I_CON" [ JSNum (JSInt t)
                   , JSArray (map translateReg rs)
                   , if t `elem` compileInfoApplyCases info
-                       then JSIdent $ translateName (sMN 0 "APPLY") ++ "$" ++ show t
+                       then JSIdent $ translateName (sMN 0 "APPLY") ++ "_" ++ show t
                        else JSNull
                   , if t `elem` compileInfoEvalCases info
-                       then JSIdent $ translateName (sMN 0 "EVAL") ++ "$" ++ show t
+                       then JSIdent $ translateName (sMN 0 "EVAL") ++ "_" ++ show t
                        else JSNull
                   ]
   )
@@ -626,7 +597,7 @@ jsCASE info safe reg cases def =
 
       jsTAG :: JS -> JS
       jsTAG js =
-        (JSTernary (js `jsInstanceOf` "i$CON") (
+        (JSTernary (js `jsInstanceOf` "I_CON") (
           JSProj js "tag"
         ) (JSNum (JSInt $ negate 1)))
 
@@ -654,7 +625,7 @@ jsPROJECT _ reg loc 1  =
     )
   )
 jsPROJECT _ reg loc ar =
-  JSApp (JSIdent "i$PROJECT") [ translateReg reg
+  JSApp (JSIdent "i_PROJECT") [ translateReg reg
                               , JSNum (JSInt loc)
                               , JSNum (JSInt ar)
                               ]
@@ -713,11 +684,11 @@ jsOP _ reg op args = JSAssign (translateReg reg) jsOP'
 
       | (LPlus (ATInt ITChar)) <- op
       , (lhs:rhs:_)            <- args =
-          jsCall "i$fromCharCode" [
+          jsCall "i_fromCharCode" [
             JSBinOp "+" (
-              jsCall "i$charCode" [translateReg lhs]
+              jsCall "i_charCode" [translateReg lhs]
             ) (
-              jsCall "i$charCode" [translateReg rhs]
+              jsCall "i_charCode" [translateReg rhs]
             )
           ]
 
@@ -1202,9 +1173,9 @@ jsOP _ reg op args = JSAssign (translateReg reg) jsOP'
       | (LFloatInt ITNative)    <- op
       , (arg:_)                 <- args = translateReg arg
       | (LChInt ITNative)       <- op
-      , (arg:_)                 <- args = jsCall "i$charCode" [translateReg arg]
+      , (arg:_)                 <- args = jsCall "i_charCode" [translateReg arg]
       | (LIntCh ITNative)       <- op
-      , (arg:_)                 <- args = jsCall "i$fromCharCode" [translateReg arg]
+      , (arg:_)                 <- args = jsCall "i_fromCharCode" [translateReg arg]
 
       | LFExp       <- op
       , (arg:_)     <- args = jsCall "Math.exp" [translateReg arg]
@@ -1246,7 +1217,7 @@ jsOP _ reg op args = JSAssign (translateReg reg) jsOP'
               ]
 
       | LSystemInfo <- op
-      , (arg:_) <- args = jsCall "i$systemInfo"  [translateReg arg]
+      , (arg:_) <- args = jsCall "i_systemInfo"  [translateReg arg]
       | LNullPtr    <- op
       , (_)         <- args = JSNull
       | otherwise = JSError $ "Not implemented: " ++ show op
@@ -1264,16 +1235,16 @@ jsRESERVE :: CompileInfo -> Int -> JS
 jsRESERVE _ _ = JSNoop
 
 jsSTACK :: JS
-jsSTACK = JSIdent "i$valstack"
+jsSTACK = JSIdent "$i_valstack"
 
 jsCALLSTACK :: JS
-jsCALLSTACK = JSIdent "i$callstack"
+jsCALLSTACK = JSIdent "$i_callstack"
 
 jsSTACKBASE :: JS
-jsSTACKBASE = JSIdent "i$valstack_base"
+jsSTACKBASE = JSIdent "$i_valstack_base"
 
 jsSTACKTOP :: JS
-jsSTACKTOP = JSIdent "i$valstack_top"
+jsSTACKTOP = JSIdent "$i_valstack_top"
 
 jsOLDBASE :: JS
 jsOLDBASE = JSIdent "oldbase"
@@ -1282,7 +1253,7 @@ jsMYOLDBASE :: JS
 jsMYOLDBASE = JSIdent "myoldbase"
 
 jsRET :: JS
-jsRET = JSIdent "i$ret"
+jsRET = JSIdent "$i_ret"
 
 jsLOC :: Int -> JS
 jsLOC 0 = JSIndex jsSTACK jsSTACKBASE
