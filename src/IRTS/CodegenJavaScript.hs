@@ -117,13 +117,9 @@ codegenJS_all target definitions includes libs filename outputType = do
   path       <- (++) <$> getDataDir <*> (pure "/jsrts/")
   idrRuntime <- readFile $ path ++ "Runtime-common.js"
   tgtRuntime <- readFile $ concat [path, "Runtime", rt, ".js"]
-  jsbn       <- if compileInfoNeedsBigInt info
-                   then readFile $ path ++ "jsbn/jsbn.js"
-                   else return ""
   let runtime = (  header
                 ++ includeLibs libs
                 ++ included
-                ++ jsbn
                 ++ idrRuntime
                 ++ tgtRuntime
                 )
