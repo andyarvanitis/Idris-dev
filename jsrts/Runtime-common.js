@@ -48,35 +48,33 @@ def i_CALL(fun,args)
    $i_callstack.push(fun)
  end
 
-# var i$ffiWrap = function(fid,oldbase,myoldbase) {
-#   return function() {
-#     i$callstack = [];
-#
-#     var res = fid;
-#
-#     for(var i = 0; i < arguments.length; ++i) {
-#       while (res instanceof i$CON) {
-#         i$valstack_top += 1;
-#         i$valstack[i$valstack_top] = res;
-#         i$valstack[i$valstack_top + 1] = arguments[i];
-#         i$SLIDE(2);
-#         i$valstack_top = i$valstack_base + 2;
-#         i$CALL(_idris__123_APPLY0_125_,[oldbase])
-#         while (i$callstack.length) {
-#           var func = i$callstack.pop();
-#           var args = i$callstack.pop();
-#           func.apply(this,args);
-#         }
-#         res = i$ret;
-#       }
-#     }
-#
-#     i$callstack = i$vm.callstack;
-#
-#     return i$ret;
-#   }
-# }
-#
+def i_ffiWrap(fid,oldbase,myoldbase)
+  return Proc.new do
+    $i_callstack = []
+    res = fid
+    arguments = [fid, oldbase, myoldbase]
+    arguments.each do |arg|
+      while res.instance_of?(I_CON) do
+        $i_valstack_top += 1
+        $i_valstack[$i_valstack_top] = res
+        $i_valstack[$i_valstack_top + 1] = arg
+        i_SLIDE(2)
+        $i_valstack_top = $i_valstack_base + 2
+        i_CALL($_idris__123_APPLY0_125_,[oldbase])
+        while $i_callstack.length > 0 do
+          func = $i_callstack.pop()
+          args = $i_callstack.pop()
+          func.call(*args)
+        end
+        res = $i_ret
+      end
+    end
+    $i_callstack = $i_vm.callstack
+    return $i_ret;
+  end
+end
+
+
 # var i$charCode = function(str) {
 #   if (typeof str == "string")
 #     return str.charCodeAt(0);
