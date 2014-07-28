@@ -60,6 +60,7 @@ Data-files:            idrisdoc/styles.css
                        rts/idris_stdfgn.h
                        rts/libtest.c
                        rbrts/Runtime-common.rb
+                       swiftrts/Runtime-common.swift
 
 Extra-source-files:
                        Makefile
@@ -600,7 +601,9 @@ Library
                 , IRTS.CodegenJavaScript
                 , IRTS.JavaScript.AST
                 , IRTS.CodegenRuby
+                , IRTS.CodegenSwift
                 , IRTS.Ruby.AST
+                , IRTS.Swift.AST
                 , IRTS.Compiler
                 , IRTS.Defunctionalise
                 , IRTS.DumpBC

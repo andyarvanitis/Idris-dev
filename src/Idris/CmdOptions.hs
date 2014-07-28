@@ -147,4 +147,5 @@ parseCodegen "javascript" = ViaJavaScript
 parseCodegen "node" = ViaNode
 parseCodegen "llvm" = ViaLLVM
 parseCodegen "ruby" = ViaRuby
+parseCodegen "swift" = ViaSwift
 parseCodegen _ = error "unknown codegen" -- FIXME: partial function

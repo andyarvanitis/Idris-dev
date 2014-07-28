@@ -286,6 +286,7 @@ data Codegen = ViaC
              | ViaLLVM
              | Bytecode
              | ViaRuby
+             | ViaSwift
     deriving (Show, Eq)
 
 -- | REPL commands
