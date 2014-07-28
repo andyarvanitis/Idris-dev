@@ -48,9 +48,13 @@ public func i$SCHED(vm:I$VM) {
   i$state.callstack = vm.callstack
 }
 
-public func i$SLIDE(args: Int...) {
-  for (var i = 0; i < args.count; ++i) {
-    i$state.valstack[i$state.valstack_base + i] = i$state.valstack[i$state.valstack_top + i]
+public func i$SLIDE(argCount: Int) {
+  for (var i = 0; i < argCount; ++i) {
+    let stackPos = i$state.valstack_base + i
+    if stackPos >= i$state.valstack.count {
+      i$state.valstack.append(nil)
+    }    
+    i$state.valstack[stackPos] = i$state.valstack[i$state.valstack_top + i]
   }
 }
 
@@ -63,24 +67,15 @@ public func i$PROJECT(val:Any?, loc:Int, arity:Int) {
     args = con.args
   }
 
-  print("argsCount: ") ; println(args.count)
-
   for (var i = 0; i < arity; ++i) {
     let stackPos = i$state.valstack_base + i + loc
-
-    print("stackPos: ") ; println(stackPos)
-    print("count: ") ; println(i$state.valstack.count)
-
     if stackPos >= i$state.valstack.count {
       i$state.valstack.append(nil)
     }    
     if args.count > 0 {
-      i$state.valstack[i$state.valstack_base + i + loc] = args[i]
+      i$state.valstack[stackPos] = args[i]
     }
   }
-
-  // i$valstack[i$valstack_base + i + loc] = value?.args[i]
-
 }
 
 public func i$CALL(fun: i$Function, args: [Int]) {
@@ -134,8 +129,12 @@ var i$fromCharCode = function(chr) {
 */
 
 
-public func i$putStr(s: Any) {
-  println(s);
+public func i$putStr(s: Any?) {
+  if let string = s {
+    println(string);
+  } else {
+    println("nil");
+  }
 };
 
 

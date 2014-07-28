@@ -366,7 +366,7 @@ translateDecl info (name@(MN 0 fun), bc)
            ) (Just $ SwiftFunction ["oldbase:Int","var myoldbase:Int"] (
                SwiftSeq $ SwiftAlloc "myoldbase:Int" Nothing : map (translateBC info) (fst body) ++ [
                  SwiftCond [ ( (translateReg $ caseReg (snd body)) `swiftInstanceOf` "i$CON" `swiftAnd` (SwiftProj regAsCon "ev")
-                          , SwiftApp (SwiftProj regAsCon "ev!") [swiftOLDBASE, swiftMYOLDBASE]
+                          , SwiftApp (SwiftProj regAsCon "ev!") [swiftOLDBASE, SwiftNum $ SwiftInt 0]
                           )
                           , ( SwiftNoop
                             , SwiftSeq $ map (translateBC info) (defaultCase (snd body))
