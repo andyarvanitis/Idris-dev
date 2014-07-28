@@ -8,8 +8,29 @@ public struct i$FuncWrapper {
   }
 }
 
-public struct I$VM {  
-  var valstack: [Any?] = []
+
+public struct i$ValStack {
+  private var array: [Any?] = []   
+
+  subscript(index: Int) -> Any? {
+    get {
+      return array[index]
+    }
+    set(value) {
+      if index < array.count {
+        array[index] = value      
+      } else if index == array.count {
+        array.append(value)
+      } else {
+        self[index - 1] = nil
+        array.append(value)
+      }
+    }
+  }
+}
+
+public struct i$VM {  
+  var valstack: i$ValStack = i$ValStack()
   var valstack_top: Int = 0
   var valstack_base: Int = 0
   var ret: Any? = nil
@@ -17,8 +38,8 @@ public struct I$VM {
 }  
 
 public struct i$state {
-  static var vm: I$VM = I$VM()
-  static var valstack: [Any?] = []
+  static var vm: i$VM = i$VM()
+  static var valstack: i$ValStack = i$ValStack()
   static var valstack_top: Int  = 0
   static var valstack_base: Int = 0
   static var ret: Any? = nil
@@ -39,7 +60,7 @@ public struct i$CON {
   }
 }
 
-public func i$SCHED(vm:I$VM) {
+public func i$SCHED(vm:i$VM) {
   i$state.vm = vm
   i$state.valstack = vm.valstack
   i$state.valstack_top = vm.valstack_top
@@ -50,11 +71,7 @@ public func i$SCHED(vm:I$VM) {
 
 public func i$SLIDE(argCount: Int) {
   for (var i = 0; i < argCount; ++i) {
-    let stackPos = i$state.valstack_base + i
-    if stackPos >= i$state.valstack.count {
-      i$state.valstack.append(nil)
-    }    
-    i$state.valstack[stackPos] = i$state.valstack[i$state.valstack_top + i]
+    i$state.valstack[i$state.valstack_base + i] = i$state.valstack[i$state.valstack_top + i]
   }
 }
 
@@ -68,12 +85,8 @@ public func i$PROJECT(val:Any?, loc:Int, arity:Int) {
   }
 
   for (var i = 0; i < arity; ++i) {
-    let stackPos = i$state.valstack_base + i + loc
-    if stackPos >= i$state.valstack.count {
-      i$state.valstack.append(nil)
-    }    
     if args.count > 0 {
-      i$state.valstack[stackPos] = args[i]
+      i$state.valstack[i$state.valstack_base + i + loc] = args[i]
     }
   }
 }

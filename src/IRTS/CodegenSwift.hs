@@ -214,7 +214,7 @@ codegenSwift_all target definitions includes libs filename outputType = do
 
       mainFun :: Swift
       mainFun =
-        SwiftSeq [ SwiftAlloc "vm" (Just $ SwiftNew "I$VM" [])
+        SwiftSeq [ SwiftAlloc "vm" (Just $ SwiftNew "i$VM" [])
               , SwiftApp (SwiftIdent "i$SCHED") [SwiftIdent "vm"]
               , SwiftApp (
                   SwiftIdent (translateName (sMN 0 "runMain"))
@@ -559,11 +559,7 @@ swiftADDTOP :: CompileInfo -> Int -> Swift
 swiftADDTOP info n
   | 0 <- n    = SwiftNoop
   | otherwise =
-      -- SwiftBinOp "+=" swiftSTACKTOP (SwiftNum (SwiftInt n))
-      SwiftBinOp ";" (SwiftBinOp "+=" swiftSTACKTOP (SwiftNum (SwiftInt n))) (fillStack n)
-    where
-      fillStack :: Int -> Swift
-      fillStack n = SwiftBinOp "+=" swiftSTACK (SwiftArray $ replicate (n+1) SwiftNull)
+      SwiftBinOp "+=" swiftSTACKTOP (SwiftNum (SwiftInt n))
 
 swiftTOPBASE :: CompileInfo -> Int -> Swift
 swiftTOPBASE _ 0  = SwiftAssign swiftSTACKTOP swiftSTACKBASE
