@@ -55,7 +55,7 @@ var i$ffiWrap = function(fid,oldbase,myoldbase) {
     var res = fid;
 
     for(var i = 0; i < arguments.length; ++i) {
-      while (res instanceof i$CON) {
+      if (res instanceof i$CON) {
         i$valstack_top += 1;
         i$valstack[i$valstack_top] = res;
         i$valstack[i$valstack_top + 1] = arguments[i];
