@@ -1304,16 +1304,16 @@ cppTOP 0 = CppIndex cppSTACK cppSTACKTOP
 cppTOP n = CppIndex cppSTACK (CppBinOp "+" cppSTACKTOP (CppNum (CppInt n)))
 
 cppPUSH :: [Cpp] -> Cpp
-cppPUSH args = CppApp (CppProj cppCALLSTACK "push_back") args
+cppPUSH args = CppApp (CppProj cppCALLSTACK "push") args
 
 cppPUSHARG :: [Cpp] -> Cpp
-cppPUSHARG args = CppApp (CppProj cppARGSTACK "push_back") args
+cppPUSHARG args = CppApp (CppProj cppARGSTACK "push") args
 
 cppPOP :: Cpp
-cppPOP = CppBinOp ";" (cppMeth cppCALLSTACK "back" []) (cppMeth cppCALLSTACK "pop_back" [])
+cppPOP = CppBinOp ";" (cppMeth cppCALLSTACK "top" []) (cppMeth cppCALLSTACK "pop" [])
 
 cppPOPARGS :: Cpp
-cppPOPARGS = CppBinOp ";" (cppMeth cppARGSTACK "back" []) (cppMeth cppARGSTACK "pop_back" [])
+cppPOPARGS = CppBinOp ";" (cppMeth cppARGSTACK "top" []) (cppMeth cppARGSTACK "pop" [])
 
 cppBOX :: Cpp -> Cpp
 cppBOX obj = CppApp (CppIdent "box") [obj]

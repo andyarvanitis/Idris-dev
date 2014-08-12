@@ -2,6 +2,8 @@
 #include <memory>
 #include <functional>
 #include <vector>
+#include <deque>
+#include <stack>
 #include <string>
 #include <sstream>
 #include <iostream>
@@ -216,29 +218,31 @@ Value to_string(const Value& value) {
 }
 
 //---------------------------------------------------------------------------------------
-class ValueVector : public std::vector<Value> {
+class ValueStack : public std::deque<Value> {
 public:
-  using std::vector<Value>::vector;  
+  using std::deque<Value>::deque;  
   Value& operator [](size_type index) {
-    while (index + 1 > this->size()) {
-      this->push_back(nullptr);
+    if (index >= this->size()) {
+      this->resize(index + 1, nullptr);
     }
-    return this->std::vector<Value>::operator[](index);
+    return this->std::deque<Value>::operator[](index);
   }
 };
 
 //---------------------------------------------------------------------------------------
 using ArgsPair = pair<IndexType,IndexType>;
 
+using CallStack = stack<Func>;
+using ArgStack = stack<ArgsPair>;
 
 //---------------------------------------------------------------------------------------
 struct VirtualMachine {
-  ValueVector valstack;
+  ValueStack valstack;
   IndexType valstack_top = 0;
   IndexType valstack_base = 0;
   Value ret = nullptr;
-  vector<Func> callstack;
-  vector<ArgsPair> argstack;
+  CallStack callstack;
+  ArgStack argstack;
 };
 
 //---------------------------------------------------------------------------------------
@@ -269,8 +273,8 @@ void project(const Value& value, const IndexType loc, const int arity) {
 }
 
 void vmcall(const Func& fn, const ArgsPair& args) {
-   g_vm->callstack.push_back(fn);
-   g_vm->argstack.push_back(args);
+   g_vm->callstack.push(fn);
+   g_vm->argstack.push(args);
 }
 
 //---------------------------------------------------------------------------------------
@@ -292,10 +296,10 @@ RetType proxy_function(const weak_ptr<VirtualMachine>& vm_weak, const weak_ptr<C
     g_vm = vm;
     
     // Create (empty) private stacks and make them the system's currently used ones.
-    auto old_callstack = g_vm->callstack;
-    auto old_argstack = g_vm->argstack;
-    g_vm->callstack.clear();
-    g_vm->argstack.clear();
+    CallStack callstack;
+    ArgStack argstack;
+    g_vm->callstack.swap(callstack);
+    g_vm->argstack.swap(argstack);
     
     auto res = con;
     const vector<Closure> arglist = { args... };
@@ -309,8 +313,8 @@ RetType proxy_function(const weak_ptr<VirtualMachine>& vm_weak, const weak_ptr<C
         g_vm->valstack_top = g_vm->valstack_base + 2;
         vmcall(_idris__123_APPLY0_125_,{oldbase,0});  
         while (g_vm->callstack.size()) {
-          auto func = g_vm->callstack.back() ; g_vm->callstack.pop_back();
-          auto fargs = g_vm->argstack.back() ; g_vm->argstack.pop_back();
+          auto func = g_vm->callstack.top() ; g_vm->callstack.pop();
+          auto fargs = g_vm->argstack.top() ; g_vm->argstack.pop();
           func(get<0>(fargs),get<1>(fargs));
         }  
         res = g_vm->ret;
@@ -320,8 +324,8 @@ RetType proxy_function(const weak_ptr<VirtualMachine>& vm_weak, const weak_ptr<C
     auto result = g_vm->ret;
     
     // Restore the stacks and vm
-    g_vm->callstack = old_callstack;
-    g_vm->argstack = old_argstack;
+    g_vm->callstack.swap(callstack);
+    g_vm->argstack.swap(argstack);    
     g_vm = vm_previous;
 
     return unboxed<RetType>(result);
