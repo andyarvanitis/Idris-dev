@@ -135,7 +135,7 @@ codegenCpp_all target definitions includes libs filename outputType = do
     where
       
       varDecl :: Cpp -> T.Text
-      varDecl (CppAlloc name (Just (CppFunction _ _))) = T.pack $ "void " ++ name ++ "(size_t,size_t);\n"
+      varDecl (CppAlloc name (Just (CppFunction _ _))) = T.pack $ "void " ++ name ++ "(IndexType,IndexType);\n"
       varDecl (CppAlloc name _) = T.pack $ "extern Value " ++ name ++ ";\n"
       varDecl _ = ""      
       
@@ -326,7 +326,7 @@ splitFunction (CppAlloc name (Just (CppFunction args body@(CppSeq _)))) = do
 
       newFun :: [Cpp] -> Cpp
       newFun seq =
-        CppAlloc name (Just $ CppFunction ["size_t oldbase", "size_t myoldbase"] (CppSeq seq))
+        CppAlloc name (Just $ CppFunction ["IndexType oldbase", "IndexType myoldbase"] (CppSeq seq))
 
 splitFunction cpp = return cpp
 
@@ -336,7 +336,7 @@ translateDecl info (name@(MN 0 fun), bc)
          allocCaseFunctions (snd body)
       ++ [ CppAlloc (
                translateName name
-           ) (Just $ CppFunction ["size_t oldbase", "size_t myoldbase"] (
+           ) (Just $ CppFunction ["IndexType oldbase", "IndexType myoldbase"] (
                CppSeq $ map (translateBC info) (fst body) ++ [
                  CppCond [ ( (translateReg $ caseReg (snd body)) `cppInstanceOf` "Con" `cppAnd` 
                               (CppPtrProj (CppPtrProj (translateReg $ caseReg (snd body)) "Con") "function")
@@ -376,7 +376,7 @@ translateDecl info (name@(MN 0 fun), bc)
     prepBranch (tag, code) =
       CppAlloc (
         translateName name ++ "_" ++ show tag
-      ) (Just $ CppFunction ["size_t oldbase", "size_t myoldbase"] (
+      ) (Just $ CppFunction ["IndexType oldbase", "IndexType myoldbase"] (
           CppSeq $ map (translateBC info) code
         )
       )
@@ -384,7 +384,7 @@ translateDecl info (name@(MN 0 fun), bc)
 translateDecl info (name, bc) =
   [ CppAlloc (
        translateName name
-     ) (Just $ CppFunction ["size_t oldbase", "size_t myoldbase"] (
+     ) (Just $ CppFunction ["IndexType oldbase", "IndexType myoldbase"] (
          CppSeq $ map (translateBC info)bc
        )
      )

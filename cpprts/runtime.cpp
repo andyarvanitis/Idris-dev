@@ -79,7 +79,7 @@ struct Closure {
 
 using IndexType = size_t;
 using Value = shared_ptr<Closure>;
-using Func = function<void(IndexType,IndexType)>;
+using Func = void (*)(IndexType,IndexType);
 
 struct Constructor {
   size_t tag;
@@ -223,7 +223,7 @@ public:
     while (index + 1 > this->size()) {
       this->push_back(nullptr);
     }
-    return this->at(index); 
+    return this->std::vector<Value>::operator[](index);
   }
 };
 
