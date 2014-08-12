@@ -59,6 +59,7 @@ Data-files:            idrisdoc/styles.css
                        rts/idris_net.h
                        rts/idris_stdfgn.h
                        rts/libtest.c
+                       cpprts/runtime.cpp
 
 Extra-source-files:
                        Makefile
@@ -620,7 +621,9 @@ Library
                 , IRTS.CodegenCommon
                 , IRTS.CodegenJava
                 , IRTS.CodegenJavaScript
-                , IRTS.JavaScript.AST
+                , IRTS.JavaScript.AST                
+                , IRTS.CodegenCpp
+                , IRTS.Cpp.AST
                 , IRTS.Compiler
                 , IRTS.Defunctionalise
                 , IRTS.DumpBC
