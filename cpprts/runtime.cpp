@@ -7,6 +7,7 @@
 #include <string>
 #include <sstream>
 #include <iostream>
+#include <algorithm>
 #include <cassert>
 #include <sys/utsname.h>
 
@@ -427,6 +428,15 @@ string systemInfo() {
 #define LAMBDA_WRAPPER_10(A1, A2, A3, A4, A5, A6, A7, A8, A9, R) \
 ([LAMBDA_CAPTURE_LIST](A1 a1, A2 a2, A3 a3, A4 a4, A5 a5, A6 a6, A7 a7, A8 a8,a9) -> R { \
   return proxy_function<R, A1, A2, A3, A4, A5, A6, A7, A8, A9>(_vm,_fcon,oldbase,a1,a2,a3,a4,a5,a6,a7,a8,a9); \
+}
+
+//---------------------------------------------------------------------------------------
+
+template <typename T>
+T reverse(const T& container) {
+  T rcontainer(container);
+  std::reverse(rcontainer.begin(),rcontainer.end());
+  return rcontainer;
 }
 
 //---------------------------------------------------------------------------------------

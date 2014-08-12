@@ -1210,23 +1210,23 @@ cppOP _ reg op args = CppAssign (translateReg reg) cppOP'
       , (arg:_)                 <- args = cppCall "i_fromCharCode" [translateReg arg]
 
       | LFExp       <- op
-      , (arg:_)     <- args = cppCall "Math.exp" [translateReg arg]
+      , (arg:_)     <- args = cppCall "exp" [translateReg arg]
       | LFLog       <- op
-      , (arg:_)     <- args = cppCall "Math.log" [translateReg arg]
+      , (arg:_)     <- args = cppCall "log" [translateReg arg]
       | LFSin       <- op
-      , (arg:_)     <- args = cppCall "Math.sin" [translateReg arg]
+      , (arg:_)     <- args = cppCall "sin" [translateReg arg]
       | LFCos       <- op
-      , (arg:_)     <- args = cppCall "Math.cos" [translateReg arg]
+      , (arg:_)     <- args = cppCall "cos" [translateReg arg]
       | LFTan       <- op
-      , (arg:_)     <- args = cppCall "Math.tan" [translateReg arg]
+      , (arg:_)     <- args = cppCall "tan" [translateReg arg]
       | LFASin      <- op
-      , (arg:_)     <- args = cppCall "Math.asin" [translateReg arg]
+      , (arg:_)     <- args = cppCall "asin" [translateReg arg]
       | LFACos      <- op
-      , (arg:_)     <- args = cppCall "Math.acos" [translateReg arg]
+      , (arg:_)     <- args = cppCall "acos" [translateReg arg]
       | LFATan      <- op
-      , (arg:_)     <- args = cppCall "Math.atan" [translateReg arg]
+      , (arg:_)     <- args = cppCall "atan" [translateReg arg]
       | LFSqrt      <- op
-      , (arg:_)     <- args = cppCall "Math.sqrt" [translateReg arg]
+      , (arg:_)     <- args = cppCall "sqrt" [translateReg arg]
       | LFFloor     <- op
       , (arg:_)     <- args = cppMeth (translateReg arg) "floor" []
       | LFCeil      <- op
@@ -1241,7 +1241,7 @@ cppOP _ reg op args = CppAssign (translateReg reg) cppOP'
                                   (cppMeth str "substr" [cppZero,cppOne])
                                   (CppString "")
       | LStrRev     <- op
-      , (arg:_)     <- args = CppProj (translateReg arg) "split('').reverse().join('')"
+      , (arg:_)     <- args = cppCall "reverse" [cppUNBOXED (translateReg arg) "string"]
       | LStrIndex   <- op
       , (lhs:rhs:_) <- args = CppIndex (translateReg lhs) (translateReg rhs)
       | LStrTail    <- op
