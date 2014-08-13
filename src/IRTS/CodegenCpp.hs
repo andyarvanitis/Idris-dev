@@ -26,6 +26,8 @@ import Data.Word
 import Data.Traversable hiding (mapM)
 import Data.Bits
 import System.IO
+import System.Process
+import System.Exit
 import System.Directory
 
 import qualified Data.Map.Strict as M
@@ -84,56 +86,103 @@ initCompileInfo bc =
 
 data CppTarget = Cpp deriving Eq
 
-
 codegenCpp :: CodeGenerator
 codegenCpp ci =
-  codegenCpp_all Cpp (simpleDecls ci)
-    (includes ci) [] (outputFile ci) (outputType ci)
+  codegenCpp_all (simpleDecls ci)
+                 (outputType ci)
+                 (outputFile ci)
+                 (includes ci)
+                 (concatMap mkObj (compileObjs ci))
+                 (concatMap mkLib (compileLibs ci) ++
+                     concatMap incdir (importDirs ci))
+                 (concatMap mkFlag (compilerFlags ci))
+                 (debugLevel ci)
+    where
+      mkObj f = f ++ " "
+      mkLib l = "-l" ++ l ++ " "
+      mkFlag l = l ++ " "
+      incdir i = "-I" ++ i ++ " "
 
-codegenCpp_all
-  :: CppTarget
-  -> [(Name, SDecl)]
-  -> [FilePath]
-  -> [String]
-  -> FilePath
-  -> OutputType
-  -> IO ()
-codegenCpp_all target definitions includes libs filename outputType = do
+codegenCpp_all :: 
+     [(Name, SDecl)] -> -- declarations/definitions
+     OutputType ->      -- output type
+     FilePath ->        -- output file name
+     [FilePath] ->      -- include files
+     String ->          -- extra object files
+     String ->          -- libraries
+     String ->          -- extra compiler flags
+     DbgLevel ->        -- debug level
+     IO ()
+
+codegenCpp_all definitions outputType filename includes objs libs flags dbg = do
   let bytecode = map toBC definitions
   let info = initCompileInfo bytecode
   let cpp = concatMap (translateDecl info) bytecode
   let full = concatMap processFunction cpp
   let code = deadCodeElim full
   let (cons, opt) = optimizeConstructors code
-  let (header, rt) = case target of
-                          Cpp -> ("", "")
-
-  included   <- concat <$> getIncludes includes
+  let (header, rt) = ("", "")
+  
   path       <- (++) <$> getDataDir <*> (pure "/cpprts/")
   idrRuntime <- readFile $ path ++ "runtime.cpp"
-  -- tgtRuntime <- readFile $ concat [path, "Runtime", rt, ".cpp"]
-  let runtime = (  header
-                ++ includeLibs libs
-                ++ included
-                ++ idrRuntime
-                -- ++ tgtRuntime
-                )
-  TIO.writeFile filename (  T.pack runtime
-                         `T.append` T.concat (map varDecl opt)
-                         `T.append` T.pack "\n\n"
-                         `T.append` T.concat (map varDecl cons)
-                         `T.append` T.pack "\n\n"
-                         `T.append` T.concat (map compileCpp opt)
-                         `T.append` T.concat (map compileCpp cons)
-                         `T.append` main
-                         `T.append` invokeMain
-                         )
-  setPermissions filename (emptyPermissions { readable   = True
-                                            , executable = False
-                                            , writable   = True
-                                            })
+                
+  let cppout = (  T.pack idrRuntime
+                  `T.append` T.pack (headers includes)
+                  `T.append` T.concat (map varDecl opt)
+                  `T.append` T.pack "\n\n"
+                  `T.append` T.concat (map varDecl cons)
+                  `T.append` T.pack "\n\n"
+                  `T.append` T.concat (map compileCpp opt)
+                  `T.append` T.concat (map compileCpp cons)
+                  `T.append` main
+                  `T.append` invokeMain
+               )
+  case outputType of
+    Raw -> TIO.writeFile filename cppout
+    _ -> do (tmpn, tmph) <- tempfile
+            hPutStr tmph (T.unpack cppout)
+            hFlush tmph
+            hClose tmph
+            comp <- getCC
+            libFlags <- getLibFlags
+            incFlags <- getIncFlags
+            let cc = comp ++ " " ++
+                    ccStandard ++ " " ++
+                    ccDbg dbg ++ " " ++
+                    ccFlags ++
+                    " -I. " ++ objs ++ " -x c++ " ++
+                    (if (outputType == Executable) then "" else " -c ") ++
+                    " " ++ tmpn ++
+                    " " ++ libStandard ++ " " ++
+                    " " ++ libFlags ++
+                    " " ++ incFlags ++
+                    " " ++ libs ++
+                    " " ++ flags ++
+                    " -o " ++ filename
+            exit <- system cc
+            when (exit /= ExitSuccess) $
+              putStrLn ("FAILURE: " ++ cc)
     where
-      
+
+      headers xs = concatMap (\h -> let header = case h of ('<':_) -> h
+                                                           _ -> "\"" ++ h ++ "\"" in                                                      
+                                    "#include " ++ header ++ "\n")
+                             (xs ++ []) -- "idris_rts.h", etc..
+
+      debug TRACE = "#define IDRIS_TRACE\n\n"
+      debug _ = ""
+
+      -- We're using signed integers now. Make sure we get consistent semantics
+      -- out of them from cc. See e.g. http://thiemonagel.de/2010/01/signed-integer-overflow/
+      ccFlags = " -fwrapv -fno-strict-overflow"
+
+      ccStandard = "-std=c++11"
+      libStandard = "-lc++"
+
+      ccDbg DEBUG = "-g"
+      ccDbg TRACE = "-O2"
+      ccDbg _ = "-O2"      
+
       varDecl :: Cpp -> T.Text
       varDecl (CppAlloc name (Just (CppFunction _ _))) = T.pack $ "void " ++ name ++ "(IndexType,IndexType);\n"
       varDecl (CppAlloc name _) = T.pack $ "extern Value " ++ name ++ ";\n"
@@ -193,21 +242,9 @@ codegenCpp_all target definitions includes libs filename outputType = do
       processFunction =
         collectSplitFunctions . (\x -> evalRWS (splitFunction x) () 0)
 
-      includeLibs :: [String] -> String
-      includeLibs =
-        concatMap (\lib -> "var " ++ lib ++ " = require(\"" ++ lib ++"\");\n")
-
-      getIncludes :: [FilePath] -> IO [String]
-      getIncludes = mapM readFile
-
       main :: T.Text
-      main =
-        compileCpp $ CppAlloc "main" (Just $
-          CppFunction [] (
-            case target of
-                 Cpp -> mainFun
-          )
-        )
+      main = 
+        compileCpp $ CppAlloc "main" (Just $ CppFunction [] mainFun)
 
       mainFun :: Cpp
       mainFun =
