@@ -438,7 +438,7 @@ translateReg reg
 translateConstant :: Const -> Cpp
 translateConstant (I i)                    = CppNum (CppInt i)
 translateConstant (Fl f)                   = CppNum (CppFloat f)
-translateConstant (Ch c)                   = CppString (translateChar c)
+translateConstant (Ch c)                   = CppChar (translateChar c)
 translateConstant (Str s)                  = CppString $ concatMap translateChar s
 translateConstant (AType (ATInt ITNative)) = CppType CppIntTy
 translateConstant StrType                  = CppType CppStringTy
@@ -1220,31 +1220,31 @@ cppOP _ reg op args = CppAssign (translateReg reg) cppOP'
       | LStrLt      <- op
       , (lhs:rhs:_) <- args = translateBinaryOp "<" lhs rhs
       | LStrLen     <- op
-      , (arg:_)     <- args = CppProj (translateReg arg) "length"
+      , (arg:_)     <- args = cppMeth (cppUNBOXED (translateReg arg) "string") "length" []
       | (LStrInt ITNative)      <- op
-      , (arg:_)                 <- args = cppMeth (translateReg arg) "to_i" []
+      , (arg:_)                 <- args = cppCall "stoi" [cppUNBOXED (translateReg arg) "string"]
       | (LIntStr ITNative)      <- op
       , (arg:_)                 <- args = cppCall "to_string" [translateReg arg]
       | (LSExt ITNative ITBig)  <- op
       , (arg:_)                 <- args = translateReg arg
       | (LTrunc ITBig ITNative) <- op
-      , (arg:_)                 <- args = cppMeth (translateReg arg) "to_i" []
+      , (arg:_)                 <- args = cppCall "stoi" [cppUNBOXED (translateReg arg) "string"]
       | (LIntStr ITBig)         <- op
       , (arg:_)                 <- args = cppCall "to_string" [translateReg arg]
       | (LStrInt ITBig)         <- op
-      , (arg:_)                 <- args = cppMeth (translateReg arg) "to_i" []
+      , (arg:_)                 <- args = cppCall "stoll" [cppUNBOXED (translateReg arg) "string"]
       | LFloatStr               <- op
       , (arg:_)                 <- args = cppCall "to_string" [translateReg arg]
       | LStrFloat               <- op
-      , (arg:_)                 <- args = cppMeth (translateReg arg) "to_f" []
+      , (arg:_)                 <- args = cppCall "stod" [cppUNBOXED (translateReg arg) "string"]
       | (LIntFloat ITNative)    <- op
       , (arg:_)                 <- args = translateReg arg
       | (LFloatInt ITNative)    <- op
       , (arg:_)                 <- args = translateReg arg
       | (LChInt ITNative)       <- op
-      , (arg:_)                 <- args = cppCall "i_charCode" [translateReg arg]
+      , (arg:_)                 <- args = cppCall "charCode" [translateReg arg]
       | (LIntCh ITNative)       <- op
-      , (arg:_)                 <- args = cppCall "i_fromCharCode" [translateReg arg]
+      , (arg:_)                 <- args = cppCall "fromCharCode" [translateReg arg]
 
       | LFExp       <- op
       , (arg:_)     <- args = cppCall "exp" [translateReg arg]
@@ -1280,7 +1280,8 @@ cppOP _ reg op args = CppAssign (translateReg reg) cppOP'
       | LStrRev     <- op
       , (arg:_)     <- args = cppCall "reverse" [cppUNBOXED (translateReg arg) "string"]
       | LStrIndex   <- op
-      , (lhs:rhs:_) <- args = CppIndex (translateReg lhs) (translateReg rhs)
+      , (lhs:rhs:_) <- args = cppBOX $ CppIndex (cppUNBOXED (translateReg lhs) "string") 
+                                                (cppUNBOXED (translateReg rhs) "int")
       | LStrTail    <- op
       , (arg:_)     <- args =
           let v = cppUNBOXED (translateReg arg) "string" in
@@ -1289,7 +1290,7 @@ cppOP _ reg op args = CppAssign (translateReg reg) cppOP'
                                   (CppString "")
 
       | LSystemInfo <- op
-      , (arg:_) <- args = cppCall "systemInfo"  [translateReg arg]
+      , (arg:_) <- args = cppBOX $ cppCall "systemInfo"  [translateReg arg]
       | LNullPtr    <- op
       , (_)         <- args = CppNull
       | otherwise = CppError $ "Not implemented: " ++ show op

@@ -64,6 +64,7 @@ data Cpp = CppRaw String
         | CppFalse
         | CppArray [Cpp]
         | CppString String
+        | CppChar String
         | CppNum CppNum
         | CppWord CppWord
         | CppAssign Cpp Cpp
@@ -237,6 +238,9 @@ compileCpp' indent (CppArray elems) =
 
 compileCpp' indent (CppString str) =
   "\"" `T.append` T.pack str `T.append` "\""
+
+compileCpp' indent (CppChar c) =
+  "'" `T.append` T.pack c `T.append` "'"
 
 compileCpp' indent (CppNum num)
   | CppInt i                    <- num = T.pack (show i)

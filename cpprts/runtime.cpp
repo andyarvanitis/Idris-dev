@@ -156,11 +156,11 @@ Value apply_operator(const Closure::Op op, const Value& lhs, const Value& rhs) {
     case Closure::Op::Star:
       return box(unboxed<T>(lhs) * unboxed<T>(rhs));
     case Closure::Op::Equals:
-        return box(unboxed<T>(lhs) == unboxed<T>(rhs));
+        return box<int>(unboxed<T>(lhs) == unboxed<T>(rhs));
     case Closure::Op::Less:
-      return box(unboxed<T>(lhs) < unboxed<T>(rhs));
+      return box<int>(unboxed<T>(lhs) < unboxed<T>(rhs));
     case Closure::Op::LessEquals:
-      return box(unboxed<T>(lhs) <= unboxed<T>(rhs));
+      return box<int>(unboxed<T>(lhs) <= unboxed<T>(rhs));
     // Unary
     case Closure::Op::ToString: {
       ostringstream strstream;
@@ -340,19 +340,34 @@ RetType proxy_function(const weak_ptr<VirtualMachine>& vm_weak,
 
 //---------------------------------------------------------------------------------------
 
-char charCode(const string& s) {
-  return s[0];
+Value charCode(const string& s) {
+  return box<int>(s.front());
 }
 
-char fromCharCode(const int cc) {
-  return cc;
+Value charCode(const Value& s) {
+  return charCode(unboxed<string>(s));
 }
 
-char fromCharCode(const string& s) {
+Value fromCharCode(const int cc) {
+  return box(cc);
+}
+
+Value fromCharCode(const string& s) {
   char c;
   istringstream(s) >> c;
-  return c;
+  return box<int>(c);
 }
+
+Value fromCharCode(const Value& c) {
+  if (c->type == Closure::Type::Int) {
+    return fromCharCode(unboxed<int>(c));
+  } else if (c->type == Closure::Type::String) {
+    return fromCharCode(unboxed<string>(c));
+  }
+  RAISE("unknown underlying type ",int(c->type));
+  return box(0);
+}
+
 
 string systemInfo() {
   ostringstream infoStr;
