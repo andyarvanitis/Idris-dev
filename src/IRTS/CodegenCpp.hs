@@ -644,12 +644,15 @@ cppCASE info safe reg cases def =
 cppCONSTCASE :: CompileInfo -> Reg -> [(Const, [BC])] -> Maybe [BC] -> Cpp
 cppCONSTCASE info reg cases def =
   CppCond $ (
-    map (cppEq (cppUNBOXED (translateReg reg) "int") . translateConstant *** prepBranch) cases
+    map (unboxedBinOp (cppEq) (translateReg reg) . translateConstant *** prepBranch) cases
   ) ++ (maybe [] ((:[]) . ((,) CppNoop) . prepBranch) def)
     where
       prepBranch :: [BC] -> Cpp
       prepBranch bc = CppSeq $ map (translateBC info) bc
 
+      unboxedBinOp :: (Cpp -> Cpp -> Cpp) -> Cpp -> Cpp -> Cpp
+      unboxedBinOp f l r = f (cppUNBOXED l (unboxedType r)) r
+      
 cppPROJECT :: CompileInfo -> Reg -> Int -> Int -> Cpp
 cppPROJECT _ reg loc 0  = CppNoop
 cppPROJECT _ reg loc 1  =
@@ -1358,6 +1361,15 @@ cppBOX obj = CppApp (CppIdent "box") [obj]
 
 cppUNBOXED :: Cpp -> String -> Cpp
 cppUNBOXED obj typ = CppApp (CppIdent $ "unboxed" ++ "<" ++ typ ++ ">") [obj]
+
+unboxedType :: Cpp -> String
+unboxedType e = case e of 
+                          (CppString _)                       -> "string"
+                          (CppNum (CppFloat _))               -> "double"
+                          (CppNum (CppInteger (CppBigInt _))) -> "ubigint"
+                          (CppNum _)                          -> "int"
+                          (CppChar _)                         -> "string"                          
+                          _                                   -> ""
 
 translateBC :: CompileInfo -> BC -> Cpp
 translateBC info bc

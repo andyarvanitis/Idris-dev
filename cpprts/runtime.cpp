@@ -117,21 +117,25 @@ T unboxed(const Value& value) {
 
 template <>
 int unboxed(const Value& value) {
+  assert(value->type == Closure::Type::Int);
   return value->Int;
 }
 
 template <>
 double unboxed(const Value& value) {
+  assert(value->type == Closure::Type::Float);
   return value->Float;
 }
 
 template <>
 string unboxed(const Value& value) {
+  assert(value->type == Closure::Type::String);
   return value->String;
 }
 
 template <>
 ubigint unboxed(const Value& value) {
+  assert(value->type == Closure::Type::UBigInt);
   return value->UBigInt;
 }
 
@@ -174,8 +178,10 @@ Value apply_operator(const Closure::Op op, const Value& lhs, const Value& rhs) {
 }
 
 Value find_type_and_apply_operator(const Closure::Op op, const Value& lhs, const Value& rhs = nullptr) {
-  const Value& operand = lhs ? lhs : rhs;
-  switch (operand->type) {
+  if (rhs and rhs->type != lhs->type) {
+    RAISE("mismatched operand types: ",int(rhs->type));
+  }
+  switch (lhs->type) {
     case Closure::Type::Int:
       return apply_operator<int>(op, lhs, rhs);    
     case Closure::Type::Float:
@@ -185,7 +191,7 @@ Value find_type_and_apply_operator(const Closure::Op op, const Value& lhs, const
     case Closure::Type::UBigInt:
       return apply_operator<ubigint>(op, lhs, rhs);    
     default:
-      RAISE("unsupported operand type",int(operand->type));
+      RAISE("unsupported operand type",int(lhs->type));
       return nullptr;
   }
 }
@@ -340,6 +346,7 @@ RetType proxy_function(const weak_ptr<VirtualMachine>& vm_weak,
 
 //---------------------------------------------------------------------------------------
 
+// TODO: unicode (UTF8?) support
 Value charCode(const string& s) {
   return box<int>(s.front());
 }
@@ -349,7 +356,7 @@ Value charCode(const Value& s) {
 }
 
 Value fromCharCode(const int cc) {
-  return box(cc);
+  return box(string(1,cc));
 }
 
 Value fromCharCode(const string& s) {
@@ -367,7 +374,6 @@ Value fromCharCode(const Value& c) {
   RAISE("unknown underlying type ",int(c->type));
   return box(0);
 }
-
 
 string systemInfo() {
   ostringstream infoStr;
