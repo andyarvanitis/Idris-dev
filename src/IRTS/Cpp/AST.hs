@@ -240,7 +240,7 @@ compileCpp' indent (CppString str) =
   "\"" `T.append` T.pack str `T.append` "\""
 
 compileCpp' indent (CppChar c) =
-  "\"" `T.append` T.pack c `T.append` "\""
+  "'" `T.append` T.pack c `T.append` "'"
 
 compileCpp' indent (CppNum num)
   | CppInt i                    <- num = T.pack (show i)

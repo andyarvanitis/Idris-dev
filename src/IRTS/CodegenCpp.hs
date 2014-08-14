@@ -1369,7 +1369,7 @@ unboxedType e = case e of
                           (CppNum (CppInteger (CppBigInt _))) -> "ubigint"
                           (CppNum _)                          -> "int"
                           (CppChar _)                         -> "string"                          
-                          _                                   -> ""
+                          _                                   -> "character"
 
 translateBC :: CompileInfo -> BC -> Cpp
 translateBC info bc

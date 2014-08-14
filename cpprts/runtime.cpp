@@ -29,13 +29,29 @@
 
 using namespace std;  
 
+
+
 using ubigint = unsigned long long int;
+
+
+class character : public string {
+  using string::string;
+  public:
+  character() {}
+  character(const string& s) : string(s) {}
+  character(const char*) = delete;
+  character(const int& c) : string(1,c) {}
+};
+
+bool operator==(const character& ch, const char& c) {
+  return (ch.front() == c);
+}
 
 struct Constructor;
 
 struct Closure {
   enum class Type {
-    Int, UBigInt, Float, String, Con
+    Int, UBigInt, Float, String, Character, Con
   };
   
   enum class Op {
@@ -48,6 +64,7 @@ struct Closure {
     ubigint UBigInt;
     double Float;
     string String;
+    character Character;
     shared_ptr<Constructor> Con;
   };
 
@@ -55,6 +72,7 @@ struct Closure {
   Closure(const ubigint& i) : type(Closure::Type::UBigInt), UBigInt(i) {}
   Closure(const double& d) : type(Closure::Type::Float), Float(d) {}
   Closure(const string& s) : type(Closure::Type::String), String(s) {}
+  Closure(const character& c) : type(Closure::Type::Character), Character(c) {}
   Closure(shared_ptr<Constructor> c) : type(Closure::Type::Con), Con(c) {}
 
   Closure(const Closure& c) : type(c.type) {
@@ -70,6 +88,9 @@ struct Closure {
         break;
       case Type::String:
         String = c.String;
+        break;
+      case Type::Character:
+        Character = c.Character;
         break;
       case Type::Con:
         Con = c.Con;
@@ -134,6 +155,21 @@ string unboxed(const Value& value) {
 }
 
 template <>
+character unboxed(const Value& value) {
+  switch (value->type) {
+   case Closure::Type::Character:
+      return value->Character;
+   case Closure::Type::String:
+      return value->Character;
+   case Closure::Type::Int:
+      return to_string(value->Int);
+   default:
+      RAISE("unsupported character conversion: ", int(value->type));
+      return value->Character;
+  }
+}
+
+template <>
 ubigint unboxed(const Value& value) {
   assert(value->type == Closure::Type::UBigInt);
   return value->UBigInt;
@@ -149,6 +185,24 @@ string operator*(const string&, const string&) {
   return "";
 }
 
+string operator/(const string&, const string&) {
+  RAISE("'string' does not support '/' operator", "");
+  return "";
+}
+
+template <typename T>
+Value modulo(const Value& lhs, const Value& rhs) {
+  switch (lhs->type) {
+    case Closure::Type::Int:
+      return box(unboxed<int>(lhs) % unboxed<int>(rhs));
+    case Closure::Type::UBigInt:
+      return box(unboxed<ubigint>(lhs) % unboxed<ubigint>(rhs));
+    default:
+      RAISE("'%' operator not supported by non-integral types", "");
+      return box(0);
+  }
+}
+
 template <typename T>
 Value apply_operator(const Closure::Op op, const Value& lhs, const Value& rhs) {
   switch (op) {
@@ -159,6 +213,10 @@ Value apply_operator(const Closure::Op op, const Value& lhs, const Value& rhs) {
       return box(unboxed<T>(lhs) - unboxed<T>(rhs));
     case Closure::Op::Star:
       return box(unboxed<T>(lhs) * unboxed<T>(rhs));
+    case Closure::Op::Slash:
+      return box(unboxed<T>(lhs) / unboxed<T>(rhs));
+    case Closure::Op::Percent:
+      return modulo<T>(lhs, rhs);
     case Closure::Op::Equals:
         return box<int>(unboxed<T>(lhs) == unboxed<T>(rhs));
     case Closure::Op::Less:
@@ -168,7 +226,7 @@ Value apply_operator(const Closure::Op op, const Value& lhs, const Value& rhs) {
     // Unary
     case Closure::Op::ToString: {
       ostringstream strstream;
-      strstream << unboxed<T>(lhs);
+//      strstream << unboxed<T>(lhs);
       return box(strstream.str());
     }
     default:
@@ -178,9 +236,6 @@ Value apply_operator(const Closure::Op op, const Value& lhs, const Value& rhs) {
 }
 
 Value find_type_and_apply_operator(const Closure::Op op, const Value& lhs, const Value& rhs = nullptr) {
-  if (rhs and rhs->type != lhs->type) {
-    RAISE("mismatched operand types: ",int(rhs->type));
-  }
   switch (lhs->type) {
     case Closure::Type::Int:
       return apply_operator<int>(op, lhs, rhs);    
@@ -188,6 +243,8 @@ Value find_type_and_apply_operator(const Closure::Op op, const Value& lhs, const
       return apply_operator<double>(op, lhs, rhs);    
     case Closure::Type::String:
       return apply_operator<string>(op, lhs, rhs);    
+    case Closure::Type::Character:
+      return apply_operator<character>(op, lhs, rhs);
     case Closure::Type::UBigInt:
       return apply_operator<ubigint>(op, lhs, rhs);    
     default:
@@ -208,8 +265,20 @@ Value operator*(const Value& lhs, const Value& rhs) {
   return find_type_and_apply_operator(Closure::Op::Star, lhs, rhs);
 }
 
+Value operator/(const Value& lhs, const Value& rhs) {
+  return find_type_and_apply_operator(Closure::Op::Slash, lhs, rhs);
+}
+
+Value operator%(const Value& lhs, const Value& rhs) {
+  return find_type_and_apply_operator(Closure::Op::Percent, lhs, rhs);
+}
+
 Value operator==(const Value& lhs, const Value& rhs) {
   return find_type_and_apply_operator(Closure::Op::Equals, lhs, rhs);
+}
+
+Value operator==(const Value& lhs, nullptr_t n) {
+  return box<int>(not lhs);
 }
 
 Value operator<(const Value& lhs, const Value& rhs) {
@@ -346,30 +415,36 @@ RetType proxy_function(const weak_ptr<VirtualMachine>& vm_weak,
 
 //---------------------------------------------------------------------------------------
 
-// TODO: unicode (UTF8?) support
-Value charCode(const string& s) {
-  return box<int>(s.front());
+Value charCode(const character& s) {
+  return box<character>(s);
 }
 
 Value charCode(const Value& s) {
-  return charCode(unboxed<string>(s));
+  switch (s->type) {
+    case Closure::Type::String:
+      return charCode(s->String);
+    case Closure::Type::Character:
+      return s;
+    default:
+      return s;
+  }
 }
 
 Value fromCharCode(const int cc) {
-  return box(string(1,cc));
+  return box(character(string(1,cc)));
 }
 
 Value fromCharCode(const string& s) {
-  char c;
+  int c;
   istringstream(s) >> c;
-  return box<int>(c);
+  return fromCharCode(c);
 }
 
 Value fromCharCode(const Value& c) {
   if (c->type == Closure::Type::Int) {
-    return fromCharCode(unboxed<int>(c));
+    return fromCharCode(c->Int);
   } else if (c->type == Closure::Type::String) {
-    return fromCharCode(unboxed<string>(c));
+    return fromCharCode(c->String);
   }
   RAISE("unknown underlying type ",int(c->type));
   return box(0);
