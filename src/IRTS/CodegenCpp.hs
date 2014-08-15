@@ -447,8 +447,8 @@ translateConstant (AType ATFloat)          = CppType CppFloatTy
 translateConstant (AType (ATInt ITChar))   = CppType CppCharTy
 translateConstant PtrType                  = CppType CppPtrTy
 translateConstant Forgot                   = CppType CppForgotTy
-translateConstant (BI 0)                   = CppNum (CppInt 0)
-translateConstant (BI 1)                   = CppNum (CppInt 1)
+translateConstant (BI 0)                   = CppNum $ CppInteger (CppBigInt 0)
+translateConstant (BI 1)                   = CppNum $ CppInteger (CppBigInt 1)
 translateConstant (BI i)                   = CppNum $ CppInteger (CppBigInt i)
 translateConstant (B8 b)                   = CppWord (CppWord8 b)
 translateConstant (B16 b)                  = CppWord (CppWord16 b)
@@ -459,32 +459,32 @@ translateConstant c =
 
 
 translateChar :: Char -> String
-translateChar ch
-  | '\a'   <- ch       = "\\u0007"
-  | '\b'   <- ch       = "\\b"
-  | '\f'   <- ch       = "\\f"
-  | '\n'   <- ch       = "\\n"
-  | '\r'   <- ch       = "\\r"
-  | '\t'   <- ch       = "\\t"
-  | '\v'   <- ch       = "\\v"
-  | '\SO'  <- ch       = "\\u000E"
-  | '\DEL' <- ch       = "\\u007F"
-  | '\\'   <- ch       = "\\\\"
-  | '\"'   <- ch       = "\\\""
-  | '\''   <- ch       = "\\\'"
-  | ch `elem` asciiTab = "\\u00" ++ fill (showHex (ord ch) "")
-  | otherwise          = [ch]
+translateChar ch = "\\x" ++ fill (showHex (ord ch) "")
+  -- | '\a'   <- ch       = "\\a"
+  -- | '\b'   <- ch       = "\\b"
+  -- | '\f'   <- ch       = "\\f"
+  -- | '\n'   <- ch       = "\\n"
+  -- | '\r'   <- ch       = "\\r"
+  -- | '\t'   <- ch       = "\\t"
+  -- | '\v'   <- ch       = "\\v"
+  -- | '\SO'  <- ch       = "\\u000E"
+  -- | '\DEL' <- ch       = "\\u007F"
+  -- | '\\'   <- ch       = "\\u005C"
+  -- | '\"'   <- ch       = "\\u0022"
+  -- | '\''   <- ch       = "\\u002C"
+  -- | ch `elem` asciiTab = "\\u00" ++ fill (showHex (ord ch) "")
+  -- | otherwise          = [ch]
   where
     fill :: String -> String
     fill s = if length s == 1
                 then '0' : s
                 else s
-
-    asciiTab =
-      ['\NUL', '\SOH', '\STX', '\ETX', '\EOT', '\ENQ', '\ACK', '\BEL',
-       '\BS',  '\HT',  '\LF',  '\VT',  '\FF',  '\CR',  '\SO',  '\SI',
-       '\DLE', '\DC1', '\DC2', '\DC3', '\DC4', '\NAK', '\SYN', '\ETB',
-       '\CAN', '\EM',  '\SUB', '\ESC', '\FS',  '\GS',  '\RS',  '\US']
+  --
+  --   asciiTab =
+  --     ['\NUL', '\SOH', '\STX', '\ETX', '\EOT', '\ENQ', '\ACK', '\BEL',
+  --      '\BS',  '\HT',  '\LF',  '\VT',  '\FF',  '\CR',  '\SO',  '\SI',
+  --      '\DLE', '\DC1', '\DC2', '\DC3', '\DC4', '\NAK', '\SYN', '\ETB',
+  --      '\CAN', '\EM',  '\SUB', '\ESC', '\FS',  '\GS',  '\RS',  '\US']
 
 translateName :: Name -> String
 translateName n = "_idris_" ++ concatMap cchar (showCG n)
@@ -1223,7 +1223,7 @@ cppOP _ reg op args = CppAssign (translateReg reg) cppOP'
       | LStrLt      <- op
       , (lhs:rhs:_) <- args = translateBinaryOp "<" lhs rhs
       | LStrLen     <- op
-      , (arg:_)     <- args = cppMeth (cppUNBOXED (translateReg arg) "string") "length" []
+      , (arg:_)     <- args = cppBOX $ strLen (cppUNBOXED (translateReg arg) "string")
       | (LStrInt ITNative)      <- op
       , (arg:_)                 <- args = cppCall "stoi" [cppUNBOXED (translateReg arg) "string"]
       | (LIntStr ITNative)      <- op
@@ -1273,13 +1273,15 @@ cppOP _ reg op args = CppAssign (translateReg reg) cppOP'
       , (arg:_)     <- args = cppMeth (translateReg arg) "ceil" []
 
       | LStrCons    <- op
-      , (lhs:rhs:_) <- args = translateBinaryOp "+" lhs rhs
+      , (lhs:rhs:_) <- args = cppBOX $ CppBinOp "+" (cppUNBOXED (translateReg lhs) "string") 
+                                                    (cppUNBOXED (translateReg rhs) "string")
       | LStrHead    <- op
       , (arg:_)     <- args = 
           let str = cppUNBOXED (translateReg arg) "string" in      
-              cppBOX $ CppTernary (cppAnd (translateReg arg) (CppPreOp "!" (cppMeth str "empty" [])))
-                                  (cppMeth str "substr" [cppZero,cppOne])
-                                  (CppString "")
+              CppTernary (cppAnd (translateReg arg) (CppPreOp "!" (cppMeth str "empty" [])))
+                         (cppBOXTYPE (cppMeth str "front" []) "character")
+                         (CppNull)
+
       | LStrRev     <- op
       , (arg:_)     <- args = cppCall "reverse" [cppUNBOXED (translateReg arg) "string"]
       | LStrIndex   <- op
@@ -1289,7 +1291,7 @@ cppOP _ reg op args = CppAssign (translateReg reg) cppOP'
       , (arg:_)     <- args =
           let v = cppUNBOXED (translateReg arg) "string" in
               cppBOX $ CppTernary (cppAnd (translateReg arg) (cppGreaterThan (strLen v) cppOne))
-                                  (cppMeth v "substr" [cppOne, CppBinOp "-" (cppMeth v "length" []) cppOne])
+                                  (cppMeth v "substr" [cppOne, CppBinOp "-" (strLen v) cppOne])
                                   (CppString "")
 
       | LSystemInfo <- op
@@ -1357,19 +1359,24 @@ cppPOPARGS :: Cpp
 cppPOPARGS = CppBinOp ";" (cppMeth cppARGSTACK "top" []) (cppMeth cppARGSTACK "pop" [])
 
 cppBOX :: Cpp -> Cpp
-cppBOX obj = CppApp (CppIdent "box") [obj]
+cppBOX obj = cppBOXTYPE obj (unboxedType obj)
 
 cppUNBOXED :: Cpp -> String -> Cpp
-cppUNBOXED obj typ = CppApp (CppIdent $ "unboxed" ++ "<" ++ typ ++ ">") [obj]
+cppUNBOXED obj typ = CppApp (CppIdent $ "unbox" ++ "<" ++ typ ++ ">") [obj]
 
 unboxedType :: Cpp -> String
 unboxedType e = case e of 
-                          (CppString _)                       -> "string"
-                          (CppNum (CppFloat _))               -> "double"
-                          (CppNum (CppInteger (CppBigInt _))) -> "ubigint"
-                          (CppNum _)                          -> "int"
-                          (CppChar _)                         -> "string"                          
-                          _                                   -> "character"
+                  (CppString _)                       -> "string"
+                  (CppNum (CppFloat _))               -> "double"
+                  (CppNum (CppInteger (CppBigInt _))) -> "ubigint"
+                  (CppNum _)                          -> "int"
+                  (CppChar _)                         -> "character"                          
+                  _                                   -> ""
+
+cppBOXTYPE :: Cpp -> String -> Cpp
+cppBOXTYPE obj typ = case typ of
+                       "" -> cppCall "box" [obj]
+                       _  -> cppCall ("box" ++ "<" ++ typ ++ ">") [obj]
 
 translateBC :: CompileInfo -> BC -> Cpp
 translateBC info bc
