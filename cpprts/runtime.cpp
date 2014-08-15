@@ -29,14 +29,13 @@
 
 using namespace std;  
 
-using ubigint = unsigned long long int;
-using character = unsigned int;
+using character = uint32_t;
 
 struct Constructor;
 
 struct Closure {
   enum class Type {
-    Int, UBigInt, Float, String, Character, Con
+    Int, BigInt, Float, String, Character, Con
   };
   
   enum class Op {
@@ -46,7 +45,7 @@ struct Closure {
   const Type type;
   union {
     int Int;
-    ubigint UBigInt;
+    long long int BigInt;
     double Float;
     string String;
     character Character;
@@ -54,7 +53,7 @@ struct Closure {
   };
 
   Closure(const int& i) : type(Closure::Type::Int), Int(i) {}
-  Closure(const ubigint& i) : type(Closure::Type::UBigInt), UBigInt(i) {}
+  Closure(const long long int& i) : type(Closure::Type::BigInt), BigInt(i) {}
   Closure(const double& d) : type(Closure::Type::Float), Float(d) {}
   Closure(const string& s) : type(Closure::Type::String), String(s) {}
   Closure(const character& c) : type(Closure::Type::Character), Character(c) {}
@@ -65,8 +64,8 @@ struct Closure {
       case Type::Int:
         Int = c.Int;
         break;
-      case Type::UBigInt:
-        UBigInt = c.UBigInt;
+      case Type::BigInt:
+        BigInt = c.BigInt;
         break;      
       case Type::Float:
         Float = c.Float;
@@ -126,8 +125,8 @@ int unbox(const Value& value) {
   switch (value->type) {
     case Closure::Type::Int:
       return value->Int;
-    case Closure::Type::UBigInt:
-      return static_cast<int>(value->UBigInt);
+    case Closure::Type::BigInt:
+      return static_cast<int>(value->BigInt);
     case Closure::Type::Character:
       return value->Character;
     case Closure::Type::String:
@@ -153,8 +152,8 @@ string unbox(const Value& value) {
       return string(1,value->Character);
     case Closure::Type::Int:
       return string(1,value->Int);
-    case Closure::Type::UBigInt:
-      return string(1,value->UBigInt);
+    case Closure::Type::BigInt:
+      return string(1,value->BigInt);
     default:
       RAISE("cannot unbox 'string' from type: ", int(value->type));
       return "";
@@ -170,8 +169,8 @@ character unbox(const Value& value) {
       return value->String.front();
    case Closure::Type::Int:
       return value->Int;
-   case Closure::Type::UBigInt:
-      return static_cast<character>(value->UBigInt);
+   case Closure::Type::BigInt:
+      return static_cast<character>(value->BigInt);
    default:
       RAISE("cannot unbox 'character' from type: ", int(value->type));
       return 0;
@@ -179,10 +178,10 @@ character unbox(const Value& value) {
 }
 
 template <>
-ubigint unbox(const Value& value) {
+long long int unbox(const Value& value) {
   switch (value->type) {
-    case Closure::Type::UBigInt:
-      return value->UBigInt;
+    case Closure::Type::BigInt:
+      return value->BigInt;
     case Closure::Type::Int:
       return value->Int;
     case Closure::Type::Character:
@@ -190,7 +189,7 @@ ubigint unbox(const Value& value) {
     case Closure::Type::String:
       return value->String.front();
     default:
-      RAISE("cannot unbox 'ubigint' from type: ", int(value->type));
+      RAISE("cannot unbox 'long long int' from type: ", int(value->type));
       return 0;
   }
 }
@@ -215,8 +214,8 @@ Value modulo(const Value& lhs, const Value& rhs) {
   switch (lhs->type) {
     case Closure::Type::Int:
       return box(unbox<int>(lhs) % unbox<int>(rhs));
-    case Closure::Type::UBigInt:
-      return box(unbox<ubigint>(lhs) % unbox<ubigint>(rhs));
+    case Closure::Type::BigInt:
+      return box(unbox<long long int>(lhs) % unbox<long long int>(rhs));
     default:
       RAISE("'%' operator not supported by non-integral types", "");
       return box(0);
@@ -265,8 +264,8 @@ Value find_type_and_apply_operator(const Closure::Op op, const Value& lhs, const
       return apply_operator<string>(op, lhs, rhs);    
     case Closure::Type::Character:
       return apply_operator<character>(op, lhs, rhs);
-    case Closure::Type::UBigInt:
-      return apply_operator<ubigint>(op, lhs, rhs);    
+    case Closure::Type::BigInt:
+      return apply_operator<long long int>(op, lhs, rhs);    
     default:
       RAISE("unsupported operand type",int(lhs->type));
       return nullptr;

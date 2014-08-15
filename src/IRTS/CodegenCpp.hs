@@ -1223,7 +1223,7 @@ cppOP _ reg op args = CppAssign (translateReg reg) cppOP'
       | LStrLt      <- op
       , (lhs:rhs:_) <- args = translateBinaryOp "<" lhs rhs
       | LStrLen     <- op
-      , (arg:_)     <- args = cppBOX $ strLen (cppUNBOXED (translateReg arg) "string")
+      , (arg:_)     <- args = cppBOXTYPE (strLen (cppUNBOXED (translateReg arg) "string")) "long long int"
       | (LStrInt ITNative)      <- op
       , (arg:_)                 <- args = cppCall "stoi" [cppUNBOXED (translateReg arg) "string"]
       | (LIntStr ITNative)      <- op
@@ -1368,7 +1368,7 @@ unboxedType :: Cpp -> String
 unboxedType e = case e of 
                   (CppString _)                       -> "string"
                   (CppNum (CppFloat _))               -> "double"
-                  (CppNum (CppInteger (CppBigInt _))) -> "ubigint"
+                  (CppNum (CppInteger (CppBigInt _))) -> "long long int"
                   (CppNum _)                          -> "int"
                   (CppChar _)                         -> "character"                          
                   _                                   -> ""
