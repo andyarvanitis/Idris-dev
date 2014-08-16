@@ -29,17 +29,19 @@
 
 using namespace std;  
 
-using character = uint32_t;
-
 struct Constructor;
 
 struct Closure {
   enum class Type {
-    Int, BigInt, Float, String, Character, Con
+    Int, BigInt, Float, String, Char, Con,
+    Word8, Word16, Word32, Word64
   };
   
   enum class Op {
-    Plus, Minus, Star, Slash, Percent, Equals, Less, LessEquals, Greater, GreaterEquals, ToString
+    Plus, Concat = Plus, Minus, Star, Slash, Percent, 
+    Equals, Less, LessEquals, Greater, GreaterEquals, 
+    ToString,
+    BitAnd, BitOr, BitXor, ShiftLeft, ShiftRight
   };
   
   const Type type;
@@ -48,16 +50,20 @@ struct Closure {
     long long int BigInt;
     double Float;
     string String;
-    character Character;
+    char32_t Char;
     shared_ptr<Constructor> Con;
+    
+    uint8_t  Word8;
+    uint16_t Word16;
+    uint32_t Word32;
+    uint64_t Word64;
   };
 
-  Closure(const int& i) : type(Closure::Type::Int), Int(i) {}
-  Closure(const long long int& i) : type(Closure::Type::BigInt), BigInt(i) {}
-  Closure(const double& d) : type(Closure::Type::Float), Float(d) {}
   Closure(const string& s) : type(Closure::Type::String), String(s) {}
-  Closure(const character& c) : type(Closure::Type::Character), Character(c) {}
-  Closure(shared_ptr<Constructor> c) : type(Closure::Type::Con), Con(c) {}
+  Closure(const shared_ptr<Constructor>& c) : type(Closure::Type::Con), Con(c) {}
+
+  template <typename T>
+  static Closure* Box(T); // { RAISE("unknown box operation type", ""); return nullptr; }
 
   Closure(const Closure& c) : type(c.type) {
     switch (c.type) {
@@ -73,17 +79,107 @@ struct Closure {
       case Type::String:
         String = c.String;
         break;
-      case Type::Character:
-        Character = c.Character;
+      case Type::Char:
+        Char = c.Char;
         break;
       case Type::Con:
         Con = c.Con;
         break;
+
+      case Type::Word8:
+        Word8 = c.Word8;
+        break;
+      case Type::Word16:
+        Word16 = c.Word16;
+        break;
+      case Type::Word32:
+        Word32 = c.Word32;
+        break;
+      case Type::Word64:
+        Word64 = c.Word64;
+        break;
     }
-  } 
+  }
 
   ~Closure() {}
+  private:
+    Closure(const Closure::Type t) : type(t) {}
 };
+
+template <>
+Closure* Closure::Box(const int i) {
+  auto closure = new Closure(Closure::Type::Int);
+  closure->Int = i;
+  return closure;
+}
+
+template <>
+Closure* Closure::Box(const long long int i) {
+  auto closure = new Closure(Closure::Type::BigInt);
+  closure->BigInt = i;
+  return closure;
+}
+
+template <>
+Closure* Closure::Box(const unsigned long int i) {
+  auto closure = new Closure(Closure::Type::BigInt);
+  closure->BigInt = i;
+  return closure;
+}
+
+template <>
+Closure* Closure::Box(const double d) {
+  auto closure = new Closure(Closure::Type::Float);
+  closure->Float = d;
+  return closure;
+}
+
+template <>
+Closure* Closure::Box(const string& s) {
+  return new Closure(s);
+}
+
+template <>
+Closure* Closure::Box(const string s) {
+  return new Closure(s);
+}
+
+template <>
+Closure* Closure::Box(const char32_t c) {
+  auto closure = new Closure(Closure::Type::Char);
+  closure->Char = c;
+  return closure;
+}
+
+template <>
+Closure* Closure::Box(const uint8_t w) {
+  auto closure = new Closure(Closure::Type::Word8);
+  closure->Word8 = w;
+  return closure;
+}
+
+template <>
+Closure* Closure::Box(const uint16_t w) {
+  auto closure = new Closure(Closure::Type::Word16);
+  closure->Word16 = w;
+  return closure;
+}
+
+template <>
+Closure* Closure::Box(const uint32_t w) {
+  auto closure = new Closure(Closure::Type::Word32);
+  closure->Word32 = w;
+  return closure;
+}
+
+template <>
+Closure* Closure::Box(const uint64_t w) {
+  auto closure = new Closure(Closure::Type::Word64);
+  closure->Word64 = w;
+  return closure;
+}
+
+
 
 using IndexType = size_t;
 using Value = shared_ptr<Closure>;
@@ -107,11 +203,11 @@ struct Constructor {
 
 template <typename T>
 Value box(T value) {
-  return Value(new Closure(value));
+  return Value(Closure::Box<T>(value));
 }
 
 Value MakeCon(const size_t tag, const vector<Value>& args, const Func& function){
-  return box(make_shared<Constructor>(tag,args,function));
+  return make_shared<Closure>(make_shared<Constructor>(tag,args,function));
 }
 
 template <typename T>
@@ -127,8 +223,8 @@ int unbox(const Value& value) {
       return value->Int;
     case Closure::Type::BigInt:
       return static_cast<int>(value->BigInt);
-    case Closure::Type::Character:
-      return value->Character;
+    case Closure::Type::Char:
+      return value->Char;
     case Closure::Type::String:
       return value->String.front();
     default:
@@ -148,8 +244,8 @@ string unbox(const Value& value) {
   switch (value->type) {
     case Closure::Type::String:
       return value->String;
-    case Closure::Type::Character:
-      return string(1,value->Character);
+    case Closure::Type::Char:
+      return string(1,value->Char);
     case Closure::Type::Int:
       return string(1,value->Int);
     case Closure::Type::BigInt:
@@ -160,22 +256,22 @@ string unbox(const Value& value) {
   }
 }
 
-template <>
-character unbox(const Value& value) {
-  switch (value->type) {
-   case Closure::Type::Character:
-      return value->Character;
-   case Closure::Type::String:
-      return value->String.front();
-   case Closure::Type::Int:
-      return value->Int;
-   case Closure::Type::BigInt:
-      return static_cast<character>(value->BigInt);
-   default:
-      RAISE("cannot unbox 'character' from type: ", int(value->type));
-      return 0;
-  }
-}
+ template <>
+ char32_t unbox(const Value& value) {
+   switch (value->type) {
+    case Closure::Type::Char:
+       return value->Char;
+    case Closure::Type::String:
+       return value->String.front();
+    case Closure::Type::Int:
+       return value->Int;
+    case Closure::Type::BigInt:
+       return static_cast<char32_t>(value->BigInt);
+    default:
+       RAISE("cannot unbox 'char32_t' from type: ", int(value->type));
+       return 0;
+   }
+ }
 
 template <>
 long long int unbox(const Value& value) {
@@ -184,8 +280,8 @@ long long int unbox(const Value& value) {
       return value->BigInt;
     case Closure::Type::Int:
       return value->Int;
-    case Closure::Type::Character:
-      return value->Character;
+    case Closure::Type::Char:
+      return value->Char;
     case Closure::Type::String:
       return value->String.front();
     default:
@@ -194,36 +290,56 @@ long long int unbox(const Value& value) {
   }
 }
 
-string operator-(const string&, const string&) {
-  RAISE("'string' does not support '-' operator", "");
-  return "";
+
+template <>
+uint8_t unbox(const Value& value) {
+  assert(value->type == Closure::Type::Word8);
+  return value->Word8;
 }
 
-string operator*(const string&, const string&) {
-  RAISE("'string' does not support '*' operator", "");
-  return "";
+template <>
+uint16_t unbox(const Value& value) {
+  assert(value->type == Closure::Type::Word16);
+  return value->Word16;
 }
 
-string operator/(const string&, const string&) {
-  RAISE("'string' does not support '/' operator", "");
-  return "";
+template <>
+uint32_t unbox(const Value& value) {
+  assert(value->type == Closure::Type::Word32);
+  return value->Word32;
 }
+
+template <>
+uint64_t unbox(const Value& value) {
+  assert(value->type == Closure::Type::Word64);
+  return value->Word64;
+}
+
 
 template <typename T>
-Value modulo(const Value& lhs, const Value& rhs) {
-  switch (lhs->type) {
-    case Closure::Type::Int:
-      return box(unbox<int>(lhs) % unbox<int>(rhs));
-    case Closure::Type::BigInt:
-      return box(unbox<long long int>(lhs) % unbox<long long int>(rhs));
+Value general_operator(const Closure::Op op, const Value& lhs, const Value& rhs) {
+  switch (op) {
+    case Closure::Op::Equals:
+      return box<int>(unbox<T>(lhs) == unbox<T>(rhs));
+    case Closure::Op::Less:
+      return box<int>(unbox<T>(lhs) < unbox<T>(rhs));
+    case Closure::Op::LessEquals:
+      return box<int>(unbox<T>(lhs) <= unbox<T>(rhs));
+    case Closure::Op::Concat:
+      return box(unbox<T>(lhs) + unbox<T>(rhs));      
+    case Closure::Op::ToString: {
+      ostringstream strstream;
+      strstream << unbox<T>(lhs);
+      return box(strstream.str());
+    }
     default:
-      RAISE("'%' operator not supported by non-integral types", "");
-      return box(0);
-  }
+      RAISE("unsupported operator type",int(op));
+      return nullptr;
+    }
 }
 
 template <typename T>
-Value apply_operator(const Closure::Op op, const Value& lhs, const Value& rhs) {
+Value number_operator(const Closure::Op op, const Value& lhs, const Value& rhs) {
   switch (op) {
     // Binary
     case Closure::Op::Plus:
@@ -234,38 +350,56 @@ Value apply_operator(const Closure::Op op, const Value& lhs, const Value& rhs) {
       return box(unbox<T>(lhs) * unbox<T>(rhs));
     case Closure::Op::Slash:
       return box(unbox<T>(lhs) / unbox<T>(rhs));
+    default:
+      return general_operator<T>(op, lhs, rhs);
+  }
+}
+
+template <typename T>
+Value integral_operator(const Closure::Op op, const Value& lhs, const Value& rhs) {
+  switch (op) {
     case Closure::Op::Percent:
-      return modulo<T>(lhs, rhs);
-    case Closure::Op::Equals:
-        return box<int>(unbox<T>(lhs) == unbox<T>(rhs));
-    case Closure::Op::Less:
-      return box<int>(unbox<T>(lhs) < unbox<T>(rhs));
-    case Closure::Op::LessEquals:
-      return box<int>(unbox<T>(lhs) <= unbox<T>(rhs));
-    // Unary
-    case Closure::Op::ToString: {
-      ostringstream strstream;
-      strstream << unbox<T>(lhs);
-      return box(strstream.str());
+      return box(unbox<T>(lhs) % unbox<T>(rhs));
+    case Closure::Op::BitAnd:
+      return box(unbox<T>(lhs) & unbox<T>(rhs));
+    case Closure::Op::BitOr:
+      return box(unbox<T>(lhs) | unbox<T>(rhs));
+    case Closure::Op::BitXor:
+      return box(unbox<T>(lhs) ^ unbox<T>(rhs));
+    case Closure::Op::ShiftLeft:
+      return box(unbox<T>(lhs) << unbox<T>(rhs));
+    case Closure::Op::ShiftRight: {
+      return box(unbox<T>(lhs) >> unbox<T>(rhs));
     }
     default:
-      RAISE("unsupported operator type",int(op));
-      return nullptr;
+      return number_operator<T>(op, lhs, rhs);
   }
 }
 
 Value find_type_and_apply_operator(const Closure::Op op, const Value& lhs, const Value& rhs = nullptr) {
+
   switch (lhs->type) {
+
     case Closure::Type::Int:
-      return apply_operator<int>(op, lhs, rhs);    
+      return integral_operator<int>(op, lhs, rhs);
     case Closure::Type::Float:
-      return apply_operator<double>(op, lhs, rhs);    
+      return number_operator<double>(op, lhs, rhs);
     case Closure::Type::String:
-      return apply_operator<string>(op, lhs, rhs);    
-    case Closure::Type::Character:
-      return apply_operator<character>(op, lhs, rhs);
+      return general_operator<string>(op, lhs, rhs);
+    case Closure::Type::Char:
+      return general_operator<char32_t>(op, lhs, rhs);
     case Closure::Type::BigInt:
-      return apply_operator<long long int>(op, lhs, rhs);    
+      return integral_operator<long long int>(op, lhs, rhs);
+
+    case Closure::Type::Word8:
+      return integral_operator<uint8_t>(op,lhs, rhs);
+    case Closure::Type::Word16:
+      return integral_operator<uint16_t>(op,lhs, rhs);
+    case Closure::Type::Word32:
+      return integral_operator<uint32_t>(op,lhs, rhs);
+    case Closure::Type::Word64:
+      return integral_operator<uint64_t>(op,lhs, rhs);
+
     default:
       RAISE("unsupported operand type",int(lhs->type));
       return nullptr;
@@ -306,6 +440,26 @@ Value operator<(const Value& lhs, const Value& rhs) {
 
 Value operator<=(const Value& lhs, const Value& rhs) {
   return find_type_and_apply_operator(Closure::Op::LessEquals, lhs, rhs);
+}
+
+Value operator&(const Value& lhs, const Value& rhs) {
+  return find_type_and_apply_operator(Closure::Op::BitAnd, lhs, rhs);
+}
+
+Value operator|(const Value& lhs, const Value& rhs) {
+  return find_type_and_apply_operator(Closure::Op::BitOr, lhs, rhs);
+}
+
+Value operator^(const Value& lhs, const Value& rhs) {
+  return find_type_and_apply_operator(Closure::Op::BitXor, lhs, rhs);
+}
+
+Value operator<<(const Value& lhs, const Value& rhs) {
+  return find_type_and_apply_operator(Closure::Op::ShiftLeft, lhs, rhs);
+}
+
+Value operator>>(const Value& lhs, const Value& rhs) {
+  return find_type_and_apply_operator(Closure::Op::ShiftRight, lhs, rhs);
 }
 
 Value to_string(const Value& value) {
@@ -436,14 +590,14 @@ RetType proxy_function(const weak_ptr<VirtualMachine>& vm_weak,
 
 Value charCode(const Value& value) {
   switch (value->type) {
-    case Closure::Type::Character:
-      return box<int>(value->Character);
+    case Closure::Type::Char:
+      return box<int>(value->Char);
     case Closure::Type::String:
       return box<int>(value->String.front());
     case Closure::Type::Int:
       return value;
     default:
-      RAISE("cannot create character code from type: ", int(value->type));
+      RAISE("cannot create char32_t code from type: ", int(value->type));
       return value;
   }
 }
@@ -451,11 +605,13 @@ Value charCode(const Value& value) {
 Value fromCharCode(const Value& value) {
   switch (value->type) {
     case Closure::Type::Int:
-      return box<character>(value->Int);
-    case Closure::Type::Character:
+      return box<char32_t>(value->Int);
+    case Closure::Type::Char:
       return value;
+    case Closure::Type::BigInt:
+      return box<char32_t>(static_cast<int>(value->BigInt));
     default:
-      RAISE("cannot create character from code type: ", int(value->type));
+      RAISE("cannot create char32_t from code type: ", int(value->type));
       return value;
   }
 }
@@ -548,3 +704,4 @@ T reverse(const T& container) {
 }
 
 //---------------------------------------------------------------------------------------
+

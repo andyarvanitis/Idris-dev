@@ -673,10 +673,10 @@ cppOP _ reg op args = CppAssign (translateReg reg) cppOP'
     cppOP'
       | LNoOp <- op = translateReg (last args)
 
-      | (LZExt (ITFixed IT8) ITNative)  <- op = cppUnPackUBits8 $ translateReg (last args)
-      | (LZExt (ITFixed IT16) ITNative) <- op = cppUnPackUBits16 $ translateReg (last args)
-      | (LZExt (ITFixed IT32) ITNative) <- op = cppUnPackUBits32 $ translateReg (last args)
-      | (LZExt (ITFixed IT64) ITNative) <- op = cppUnPackUBits64 $ translateReg (last args)
+      | (LZExt (ITFixed IT8) ITNative)  <- op = cppBOXTYPE (cppUNBOXED (translateReg $ last args) "int") "uint8_t"
+      | (LZExt (ITFixed IT16) ITNative) <- op = cppBOXTYPE (cppUNBOXED (translateReg $ last args) "int") "uint16_t"
+      | (LZExt (ITFixed IT32) ITNative) <- op = cppBOXTYPE (cppUNBOXED (translateReg $ last args) "int") "uint32_t"
+      | (LZExt (ITFixed IT64) ITNative) <- op = cppBOXTYPE (cppUNBOXED (translateReg $ last args) "int") "uint64_t"
 
       | (LZExt _ ITBig)        <- op = translateReg (last args)
       | (LPlus (ATInt ITBig))  <- op
@@ -731,457 +731,43 @@ cppOP _ reg op args = CppAssign (translateReg reg) cppOP'
 
       | (LTrunc (ITFixed IT16) (ITFixed IT8)) <- op
       , (arg:_)                               <- args =
-          cppPackUBits8 (
-            CppBinOp "&" (cppUnPackUBits8 $ translateReg arg) (CppNum (CppInt 0xFF))
-          )
+          cppBOXTYPE (CppBinOp "&" (cppUNBOXED (translateReg arg) "uint16_t") (CppRaw "0xFFu")) "uint8_t"
 
       | (LTrunc (ITFixed IT32) (ITFixed IT16)) <- op
       , (arg:_)                                <- args =
-          cppPackUBits16 (
-            CppBinOp "&" (cppUnPackUBits16 $ translateReg arg) (CppNum (CppInt 0xFFFF))
-          )
+          cppBOXTYPE (CppBinOp "&" (cppUNBOXED (translateReg arg) "uint32_t") (CppRaw "0xFFFFu")) "uint16_t"
 
       | (LTrunc (ITFixed IT64) (ITFixed IT32)) <- op
       , (arg:_)                                <- args =
-          cppPackUBits32 (
-            CppBinOp "&" (cppUnPackUBits32 $ translateReg arg) (CppNum (CppInt 0xFFFFFFFF))
-          )
+          cppBOXTYPE (CppBinOp "&" (cppUNBOXED (translateReg arg) "uint64_t") (CppRaw "0xFFFFFFFFu")) "uint32_t"
 
       | (LTrunc ITBig (ITFixed IT64)) <- op
       , (arg:_)                       <- args =
-          cppPackUBits64 (
-            CppBinOp "&" (cppUnPackUBits64 $ translateReg arg) (CppNum $ CppInteger (CppBigInt 0xFFFFFFFFFFFFFFFF))
-          )
+          cppBOXTYPE (CppBinOp "&" (cppUNBOXED (translateReg arg) "long long") (CppRaw "0xFFFFFFFFFFFFFFFFu")) "uint64_t"
 
-      | (LLSHR (ITFixed IT8)) <- op
+      | (LLSHR (ITFixed _)) <- op
       , (lhs:rhs:_)           <- args =
-          cppPackUBits8 (
-            CppBinOp ">>" (cppUnPackUBits8 $ translateReg lhs) (cppUnPackUBits8 $ translateReg rhs)
-          )
+          CppBinOp ">>" (translateReg lhs) (translateReg rhs)
 
-      | (LLSHR (ITFixed IT16)) <- op
-      , (lhs:rhs:_)            <- args =
-          cppPackUBits16 (
-            CppBinOp ">>" (cppUnPackUBits16 $ translateReg lhs) (cppUnPackUBits16 $ translateReg rhs)
-          )
-
-      | (LLSHR (ITFixed IT32)) <- op
-      , (lhs:rhs:_)            <- args =
-          cppPackUBits32  (
-            CppBinOp ">>" (cppUnPackUBits32 $ translateReg lhs) (cppUnPackUBits32 $ translateReg rhs)
-          )
-
-      | (LLSHR (ITFixed IT64)) <- op
-      , (lhs:rhs:_)            <- args =
-          cppPackUBits64  (
-            CppBinOp ">>" (cppUnPackUBits64 $ translateReg lhs) (cppUnPackUBits64 $ translateReg rhs)
-          )
-
-      | (LSHL (ITFixed IT8)) <- op
-      , (lhs:rhs:_)          <- args =
-          cppPackUBits8 (
-            CppBinOp "<<" (cppUnPackUBits8 $ translateReg lhs) (cppUnPackUBits8 $ translateReg rhs)
-          )
-
-      | (LSHL (ITFixed IT16)) <- op
-      , (lhs:rhs:_)           <- args =
-          cppPackUBits16 (
-            CppBinOp "<<" (cppUnPackUBits16 $ translateReg lhs) (cppUnPackUBits16 $ translateReg rhs)
-          )
-
-      | (LSHL (ITFixed IT32)) <- op
-      , (lhs:rhs:_)           <- args =
-          cppPackUBits32  (
-            CppBinOp "<<" (cppUnPackUBits32 $ translateReg lhs) (cppUnPackUBits32 $ translateReg rhs)
-          )
-
-      | (LSHL (ITFixed IT64)) <- op
-      , (lhs:rhs:_)           <- args =
-          cppPackUBits64  (
-            CppBinOp "<<" (cppUnPackUBits64 $ translateReg lhs) (cppUnPackUBits64 $ translateReg rhs)
-          )
-
-      | (LAnd (ITFixed IT8)) <- op
-      , (lhs:rhs:_)          <- args =
-          cppPackUBits8 (
-            CppBinOp "&" (cppUnPackUBits8 (translateReg lhs)) (cppUnPackUBits8 (translateReg rhs))
-          )
-
-      | (LAnd (ITFixed IT16)) <- op
-      , (lhs:rhs:_)           <- args =
-          cppPackUBits16 (
-            CppBinOp "&" (cppUnPackUBits16 (translateReg lhs)) (cppUnPackUBits16 (translateReg rhs))
-          )
-
-      | (LAnd (ITFixed IT32)) <- op
-      , (lhs:rhs:_)           <- args =
-          cppPackUBits32 (
-            CppBinOp "&" (cppUnPackUBits32 (translateReg lhs)) (cppUnPackUBits32 (translateReg rhs))
-          )
-
-      | (LAnd (ITFixed IT64)) <- op
-      , (lhs:rhs:_)           <- args =
-          cppPackUBits64 (
-            CppBinOp "&" (cppUnPackUBits64 (translateReg lhs)) (cppUnPackUBits64 (translateReg rhs))
-          )
-
-      | (LOr (ITFixed IT8)) <- op
+      | (LLt (ITFixed _)) <- op
       , (lhs:rhs:_)         <- args =
-          cppPackUBits8 (
-            CppBinOp "|" (cppUnPackUBits8 (translateReg lhs)) (cppUnPackUBits8 (translateReg rhs))
-          )
+          CppBinOp "<" (translateReg lhs) (translateReg rhs)
 
-      | (LOr (ITFixed IT16)) <- op
-      , (lhs:rhs:_)          <- args =
-          cppPackUBits16 (
-            CppBinOp "|" (cppUnPackUBits16 (translateReg lhs)) (cppUnPackUBits16 (translateReg rhs))
-          )
-
-      | (LOr (ITFixed IT32)) <- op
-      , (lhs:rhs:_)          <- args =
-          cppPackUBits32 (
-            CppBinOp "|" (cppUnPackUBits32 (translateReg lhs)) (cppUnPackUBits32 (translateReg rhs))
-          )
-
-      | (LOr (ITFixed IT64)) <- op
-      , (lhs:rhs:_)          <- args =
-          cppPackUBits64 (
-            CppBinOp "|" (cppUnPackUBits64 (translateReg lhs)) (cppUnPackUBits64 (translateReg rhs))
-          )
-
-      | (LXOr (ITFixed IT8)) <- op
-      , (lhs:rhs:_)          <- args =
-          cppPackUBits8 (
-            CppBinOp "^" (cppUnPackUBits8 (translateReg lhs)) (cppUnPackUBits8 (translateReg rhs))
-          )
-
-      | (LXOr (ITFixed IT16)) <- op
-      , (lhs:rhs:_)           <- args =
-          cppPackUBits16 (
-            CppBinOp "^" (cppUnPackUBits16 (translateReg lhs)) (cppUnPackUBits16 (translateReg rhs))
-          )
-
-      | (LXOr (ITFixed IT32)) <- op
-      , (lhs:rhs:_)           <- args =
-          cppPackUBits32 (
-            CppBinOp "^" (cppUnPackUBits32 (translateReg lhs)) (cppUnPackUBits32 (translateReg rhs))
-          )
-
-      | (LXOr (ITFixed IT64)) <- op
-      , (lhs:rhs:_)           <- args =
-          cppPackUBits64 (
-            CppBinOp "^" (cppUnPackUBits64 (translateReg lhs)) (cppUnPackUBits64 (translateReg rhs))
-          )
-
-      | (LPlus (ATInt (ITFixed IT8))) <- op
-      , (lhs:rhs:_)                   <- args =
-          cppPackUBits8 (
-            CppBinOp "+" (cppUnPackUBits8 (translateReg lhs)) (cppUnPackUBits8 (translateReg rhs))
-          )
-
-      | (LPlus (ATInt (ITFixed IT16))) <- op
-      , (lhs:rhs:_)                    <- args =
-          cppPackUBits16 (
-            CppBinOp "+" (cppUnPackUBits16 (translateReg lhs)) (cppUnPackUBits16 (translateReg rhs))
-          )
-
-      | (LPlus (ATInt (ITFixed IT32))) <- op
-      , (lhs:rhs:_)                    <- args =
-          cppPackUBits32 (
-            CppBinOp "+" (cppUnPackUBits32 (translateReg lhs)) (cppUnPackUBits32 (translateReg rhs))
-          )
-
-      | (LPlus (ATInt (ITFixed IT64))) <- op
-      , (lhs:rhs:_)                    <- args =
-          cppPackUBits64 (
-            CppBinOp "+" (cppUnPackUBits64 (translateReg lhs)) (cppUnPackUBits64 (translateReg rhs))
-          )
-
-      | (LMinus (ATInt (ITFixed IT8))) <- op
-      , (lhs:rhs:_)                    <- args =
-          cppPackUBits8 (
-            CppBinOp "-" (cppUnPackUBits8 (translateReg lhs)) (cppUnPackUBits8 (translateReg rhs))
-          )
-
-      | (LMinus (ATInt (ITFixed IT16))) <- op
-      , (lhs:rhs:_)                     <- args =
-          cppPackUBits16 (
-            CppBinOp "-" (cppUnPackUBits16 (translateReg lhs)) (cppUnPackUBits16 (translateReg rhs))
-          )
-
-      | (LMinus (ATInt (ITFixed IT32))) <- op
-      , (lhs:rhs:_)                     <- args =
-          cppPackUBits32 (
-            CppBinOp "-" (cppUnPackUBits32 (translateReg lhs)) (cppUnPackUBits32 (translateReg rhs))
-          )
-
-      | (LMinus (ATInt (ITFixed IT64))) <- op
-      , (lhs:rhs:_)                     <- args =
-          cppPackUBits64 (
-            CppBinOp "-" (cppUnPackUBits64 (translateReg lhs)) (cppUnPackUBits64 (translateReg rhs))
-          )
-
-      | (LTimes (ATInt (ITFixed IT8))) <- op
-      , (lhs:rhs:_)                    <- args =
-          cppPackUBits8 (
-            CppBinOp "*" (cppUnPackUBits8 (translateReg lhs)) (cppUnPackUBits8 (translateReg rhs))
-          )
-
-      | (LTimes (ATInt (ITFixed IT16))) <- op
-      , (lhs:rhs:_)                     <- args =
-          cppPackUBits16 (
-            CppBinOp "*" (cppUnPackUBits16 (translateReg lhs)) (cppUnPackUBits16 (translateReg rhs))
-          )
-
-      | (LTimes (ATInt (ITFixed IT32))) <- op
-      , (lhs:rhs:_)                     <- args =
-          cppPackUBits32 (
-            CppBinOp "*" (cppUnPackUBits32 (translateReg lhs)) (cppUnPackUBits32 (translateReg rhs))
-          )
-
-      | (LTimes (ATInt (ITFixed IT64))) <- op
-      , (lhs:rhs:_)                     <- args =
-          cppPackUBits64 (
-            CppBinOp "*" (cppUnPackUBits64 (translateReg lhs)) (cppUnPackUBits64 (translateReg rhs))
-          )
-
-      | (LEq (ATInt (ITFixed IT8))) <- op
-      , (lhs:rhs:_)                 <- args =
-          cppPackUBits8 (
-            CppBinOp "==" (cppUnPackUBits8 (translateReg lhs)) (cppUnPackUBits8 (translateReg rhs))
-          )
-
-      | (LEq (ATInt (ITFixed IT16))) <- op
-      , (lhs:rhs:_)                  <- args =
-          cppPackUBits16 (
-            CppBinOp "==" (cppUnPackUBits16 (translateReg lhs)) (cppUnPackUBits16 (translateReg rhs))
-          )
-
-      | (LEq (ATInt (ITFixed IT32))) <- op
-      , (lhs:rhs:_)                  <- args =
-          cppPackUBits32 (
-            CppBinOp "==" (cppUnPackUBits32 (translateReg lhs)) (cppUnPackUBits32 (translateReg rhs))
-          )
-
-      | (LEq (ATInt (ITFixed IT64))) <- op
-      , (lhs:rhs:_)                   <- args =
-          cppPackUBits64 (
-            CppBinOp "==" (cppUnPackUBits64 (translateReg lhs)) (cppUnPackUBits64 (translateReg rhs))
-          )
-
-      | (LLt (ITFixed IT8)) <- op
+      | (LLe (ITFixed _)) <- op
       , (lhs:rhs:_)         <- args =
-          cppPackUBits8 (
-            CppBinOp "<" (cppUnPackUBits8 (translateReg lhs)) (cppUnPackUBits8 (translateReg rhs))
-          )
+          CppBinOp "<=" (translateReg lhs) (translateReg rhs)
 
-      | (LLt (ITFixed IT16)) <- op
-      , (lhs:rhs:_)          <- args =
-          cppPackUBits16 (
-            CppBinOp "<" (cppUnPackUBits16 (translateReg lhs)) (cppUnPackUBits16 (translateReg rhs))
-          )
-
-      | (LLt (ITFixed IT32)) <- op
-      , (lhs:rhs:_)          <- args =
-          cppPackUBits32 (
-            CppBinOp "<" (cppUnPackUBits32 (translateReg lhs)) (cppUnPackUBits32 (translateReg rhs))
-          )
-
-      | (LLt (ITFixed IT64)) <- op
-      , (lhs:rhs:_)          <- args =
-          cppPackUBits64 (
-            CppBinOp "<" (cppUnPackUBits64 (translateReg lhs)) (cppUnPackUBits64 (translateReg rhs))
-          )
-
-      | (LLe (ITFixed IT8)) <- op
+      | (LGt (ITFixed _)) <- op
       , (lhs:rhs:_)         <- args =
-          cppPackUBits8 (
-            CppBinOp "<=" (cppUnPackUBits8 (translateReg lhs)) (cppUnPackUBits8 (translateReg rhs))
-          )
+          CppBinOp ">" (translateReg lhs) (translateReg rhs)
 
-      | (LLe (ITFixed IT16)) <- op
-      , (lhs:rhs:_)          <- args =
-          cppPackUBits16 (
-            CppBinOp "<=" (cppUnPackUBits16 (translateReg lhs)) (cppUnPackUBits16 (translateReg rhs))
-          )
-
-      | (LLe (ITFixed IT32)) <- op
-      , (lhs:rhs:_)          <- args =
-          cppPackUBits32 (
-            CppBinOp "<=" (cppUnPackUBits32 (translateReg lhs)) (cppUnPackUBits32 (translateReg rhs))
-          )
-
-      | (LLe (ITFixed IT64)) <- op
-      , (lhs:rhs:_)          <- args =
-          cppPackUBits64 (
-            CppBinOp "<=" (cppUnPackUBits64 (translateReg lhs)) (cppUnPackUBits64 (translateReg rhs))
-          )
-
-      | (LGt (ITFixed IT8)) <- op
+      | (LGe (ITFixed _)) <- op
       , (lhs:rhs:_)         <- args =
-          cppPackUBits8 (
-            CppBinOp ">" (cppUnPackUBits8 (translateReg lhs)) (cppUnPackUBits8 (translateReg rhs))
-          )
+          CppBinOp ">=" (translateReg lhs) (translateReg rhs)
 
-      | (LGt (ITFixed IT16)) <- op
-      , (lhs:rhs:_)          <- args =
-          cppPackUBits16 (
-            CppBinOp ">" (cppUnPackUBits16 (translateReg lhs)) (cppUnPackUBits16 (translateReg rhs))
-          )
-      | (LGt (ITFixed IT32)) <- op
-      , (lhs:rhs:_)          <- args =
-          cppPackUBits32 (
-            CppBinOp ">" (cppUnPackUBits32 (translateReg lhs)) (cppUnPackUBits32 (translateReg rhs))
-          )
-
-      | (LGt (ITFixed IT64)) <- op
-      , (lhs:rhs:_)          <- args =
-          cppPackUBits64 (
-            CppBinOp ">" (cppUnPackUBits64 (translateReg lhs)) (cppUnPackUBits64 (translateReg rhs))
-          )
-
-      | (LGe (ITFixed IT8)) <- op
-      , (lhs:rhs:_)         <- args =
-          cppPackUBits8 (
-            CppBinOp ">=" (cppUnPackUBits8 (translateReg lhs)) (cppUnPackUBits8 (translateReg rhs))
-          )
-
-      | (LGe (ITFixed IT16)) <- op
-      , (lhs:rhs:_)          <- args =
-          cppPackUBits16 (
-            CppBinOp ">=" (cppUnPackUBits16 (translateReg lhs)) (cppUnPackUBits16 (translateReg rhs))
-          )
-      | (LGe (ITFixed IT32)) <- op
-      , (lhs:rhs:_)          <- args =
-          cppPackUBits32 (
-            CppBinOp ">=" (cppUnPackUBits32 (translateReg lhs)) (cppUnPackUBits32 (translateReg rhs))
-          )
-
-      | (LGe (ITFixed IT64)) <- op
-      , (lhs:rhs:_)          <- args =
-          cppPackUBits64 (
-            CppBinOp ">=" (cppUnPackUBits64 (translateReg lhs)) (cppUnPackUBits64 (translateReg rhs))
-          )
-
-      | (LUDiv (ITFixed IT8)) <- op
+      | (LUDiv (ITFixed _)) <- op
       , (lhs:rhs:_)           <- args =
-          cppPackUBits8 (
-            CppBinOp "/" (cppUnPackUBits8 (translateReg lhs)) (cppUnPackUBits8 (translateReg rhs))
-          )
-
-      | (LUDiv (ITFixed IT16)) <- op
-      , (lhs:rhs:_)            <- args =
-          cppPackUBits16 (
-            CppBinOp "/" (cppUnPackUBits16 (translateReg lhs)) (cppUnPackUBits16 (translateReg rhs))
-          )
-
-      | (LUDiv (ITFixed IT32)) <- op
-      , (lhs:rhs:_)            <- args =
-          cppPackUBits32 (
-            CppBinOp "/" (cppUnPackUBits32 (translateReg lhs)) (cppUnPackUBits32 (translateReg rhs))
-          )
-
-      | (LUDiv (ITFixed IT64)) <- op
-      , (lhs:rhs:_)            <- args =
-          cppPackUBits64 (
-            CppBinOp "/" (cppUnPackUBits64 (translateReg lhs)) (cppUnPackUBits64 (translateReg rhs))
-          )
-
-      | (LSDiv (ATInt (ITFixed IT8))) <- op
-      , (lhs:rhs:_)                   <- args =
-          cppPackSBits8 (
-            CppBinOp "/" (
-              cppUnPackSBits8 $ cppPackSBits8 $ cppUnPackSBits8 (translateReg lhs)
-            ) (
-              cppUnPackSBits8 $ cppPackSBits8 $ cppUnPackSBits8 (translateReg rhs)
-            )
-          )
-
-      | (LSDiv (ATInt (ITFixed IT16))) <- op
-      , (lhs:rhs:_)                    <- args =
-          cppPackSBits16 (
-            CppBinOp "/" (
-              cppUnPackSBits16 $ cppPackSBits16 $ cppUnPackSBits16 (translateReg lhs)
-            ) (
-              cppUnPackSBits16 $ cppPackSBits16 $ cppUnPackSBits16 (translateReg rhs)
-            )
-          )
-
-      | (LSDiv (ATInt (ITFixed IT32))) <- op
-      , (lhs:rhs:_)                    <- args =
-          cppPackSBits32 (
-            CppBinOp "/" (
-              cppUnPackSBits32 $ cppPackSBits32 $ cppUnPackSBits32 (translateReg lhs)
-            ) (
-              cppUnPackSBits32 $ cppPackSBits32 $ cppUnPackSBits32 (translateReg rhs)
-            )
-          )
-
-      | (LSDiv (ATInt (ITFixed IT64))) <- op
-      , (lhs:rhs:_)                    <- args =
-          cppPackSBits64 (
-            CppBinOp "/" (
-              cppUnPackSBits64 $ cppPackSBits64 $ cppUnPackSBits64 (translateReg lhs)
-            ) (
-              cppUnPackSBits64 $ cppPackSBits64 $ cppUnPackSBits64 (translateReg rhs)
-            )
-          )
-
-      | (LSRem (ATInt (ITFixed IT8))) <- op
-      , (lhs:rhs:_)                   <- args =
-          cppPackSBits8 (
-            CppBinOp "%" (
-              cppUnPackSBits8 $ cppPackSBits8 $ cppUnPackSBits8 (translateReg lhs)
-            ) (
-              cppUnPackSBits8 $ cppPackSBits8 $ cppUnPackSBits8 (translateReg rhs)
-            )
-          )
-
-      | (LSRem (ATInt (ITFixed IT16))) <- op
-      , (lhs:rhs:_)                    <- args =
-          cppPackSBits16 (
-            CppBinOp "%" (
-              cppUnPackSBits16 $ cppPackSBits16 $ cppUnPackSBits16 (translateReg lhs)
-            ) (
-              cppUnPackSBits16 $ cppPackSBits16 $ cppUnPackSBits16 (translateReg rhs)
-            )
-          )
-
-      | (LSRem (ATInt (ITFixed IT32))) <- op
-      , (lhs:rhs:_)                    <- args =
-          cppPackSBits32 (
-            CppBinOp "%" (
-              cppUnPackSBits32 $ cppPackSBits32 $ cppUnPackSBits32 (translateReg lhs)
-            ) (
-              cppUnPackSBits32 $ cppPackSBits32 $ cppUnPackSBits32 (translateReg rhs)
-            )
-          )
-
-      | (LSRem (ATInt (ITFixed IT64))) <- op
-      , (lhs:rhs:_)                    <- args =
-          cppPackSBits64 (
-            CppBinOp "%" (
-              cppUnPackSBits64 $ cppPackSBits64 $ cppUnPackSBits64 (translateReg lhs)
-            ) (
-              cppUnPackSBits64 $ cppPackSBits64 $ cppUnPackSBits64 (translateReg rhs)
-            )
-          )
-
-      | (LCompl (ITFixed IT8)) <- op
-      , (arg:_)                <- args =
-          cppPackSBits8 $ CppPreOp "~" $ cppUnPackSBits8 (translateReg arg)
-
-      | (LCompl (ITFixed IT16)) <- op
-      , (arg:_)                 <- args =
-          cppPackSBits16 $ CppPreOp "~" $ cppUnPackSBits16 (translateReg arg)
-
-      | (LCompl (ITFixed IT32)) <- op
-      , (arg:_)                 <- args =
-          cppPackSBits32 $ CppPreOp "~" $ cppUnPackSBits32 (translateReg arg)
-
-      | (LCompl (ITFixed IT64)) <- op
-      , (arg:_)     <- args =
-          cppPackSBits64 $ CppPreOp "~" $ cppUnPackSBits64 (translateReg arg)
+          CppBinOp "/" (translateReg lhs) (translateReg rhs)
 
       | (LPlus _)   <- op
       , (lhs:rhs:_) <- args = translateBinaryOp "+" lhs rhs
@@ -1279,7 +865,7 @@ cppOP _ reg op args = CppAssign (translateReg reg) cppOP'
       , (arg:_)     <- args = 
           let str = cppUNBOXED (translateReg arg) "string" in      
               CppTernary (cppAnd (translateReg arg) (CppPreOp "!" (cppMeth str "empty" [])))
-                         (cppBOXTYPE (cppMeth str "front" []) "character")
+                         (cppBOXTYPE (cppMeth str "front" []) "char32_t")
                          (CppNull)
 
       | LStrRev     <- op
@@ -1370,7 +956,7 @@ unboxedType e = case e of
                   (CppNum (CppFloat _))               -> "double"
                   (CppNum (CppInteger (CppBigInt _))) -> "long long int"
                   (CppNum _)                          -> "int"
-                  (CppChar _)                         -> "character"                          
+                  (CppChar _)                         -> "char32_t"                          
                   _                                   -> ""
 
 cppBOXTYPE :: Cpp -> String -> Cpp
@@ -1401,3 +987,4 @@ translateBC info bc
   | OP r o a              <- bc = cppOP info r o a
   | ERROR e               <- bc = cppERROR info e
   | otherwise                   = CppRaw $ "//" ++ show bc
+

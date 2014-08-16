@@ -346,10 +346,10 @@ compileCpp' indent (CppWhile cond body) =
   `T.append` "\n" `T.append` T.replicate indent " " `T.append` "}"
 
 compileCpp' indent (CppWord word)
-  | CppWord8  b <- word = compileCpp' indent (cppPackUBits8 $ fromInt b)
-  | CppWord16 b <- word = compileCpp' indent (cppPackUBits16 $ fromInt b)
-  | CppWord32 b <- word = compileCpp' indent (cppPackUBits32 $ fromInt b)
-  | CppWord64 b <- word = compileCpp' indent (cppPackUBits64 $ fromBigInt b)
+  | CppWord8  b <- word = compileCpp' indent (CppPostOp "u" (fromInt b))
+  | CppWord16 b <- word = compileCpp' indent (CppPostOp "u" (fromInt b))
+  | CppWord32 b <- word = compileCpp' indent (CppPostOp "u" (fromInt b))
+  | CppWord64 b <- word = compileCpp' indent (CppPostOp "u" (fromBigInt b))
     where
       fromInt n = CppNum $ CppInt (fromIntegral n)
       fromBigInt n = CppNum . CppInteger . CppBigInt $ fromIntegral n
@@ -393,50 +393,7 @@ cppIsNull cpp = CppBinOp "==" cpp CppNull
 cppIsNotNull :: Cpp -> Cpp
 cppIsNotNull cpp = CppBinOp "!=" cpp CppNull
 
-cppUnPackUBits8 :: Cpp -> Cpp
-cppUnPackUBits8 cpp = CppIndex (cppMeth cpp "unpack" [CppString "C*"]) (CppNum $ CppInt 0)
+cppStaticCast :: Cpp -> String -> Cpp
+cppStaticCast cpp typ = cppCall ("static_cast" ++ "<" ++ typ ++ ">") [cpp]
 
-cppUnPackUBits16 :: Cpp -> Cpp
-cppUnPackUBits16 cpp = CppIndex (cppMeth cpp "unpack" [CppString "S*"]) (CppNum $ CppInt 0)
 
-cppUnPackUBits32 :: Cpp -> Cpp
-cppUnPackUBits32 cpp = CppIndex (cppMeth cpp "unpack" [CppString "L*"]) (CppNum $ CppInt 0)
-
-cppUnPackUBits64 :: Cpp -> Cpp
-cppUnPackUBits64 cpp = CppIndex (cppMeth cpp "unpack" [CppString "Q*"]) (CppNum $ CppInt 0)
-
-cppUnPackSBits8 :: Cpp -> Cpp
-cppUnPackSBits8 cpp = CppIndex (cppMeth cpp "unpack" [CppString "c*"]) (CppNum $ CppInt 0)
-
-cppUnPackSBits16 :: Cpp -> Cpp
-cppUnPackSBits16 cpp = CppIndex (cppMeth cpp "unpack" [CppString "s*"]) (CppNum $ CppInt 0)
-
-cppUnPackSBits32 :: Cpp -> Cpp
-cppUnPackSBits32 cpp = CppIndex (cppMeth cpp "unpack" [CppString "l*"]) (CppNum $ CppInt 0)
-
-cppUnPackSBits64 :: Cpp -> Cpp
-cppUnPackSBits64 cpp = CppIndex (cppMeth cpp "unpack" [CppString "q*"]) (CppNum $ CppInt 0)
-
-cppPackUBits8 :: Cpp -> Cpp
-cppPackUBits8 cpp = cppMeth (CppArray [cpp]) "pack" [CppString "C*"]
-
-cppPackUBits16 :: Cpp -> Cpp
-cppPackUBits16 cpp = cppMeth (CppArray [cpp]) "pack" [CppString "S*"]
-
-cppPackUBits32 :: Cpp -> Cpp
-cppPackUBits32 cpp = cppMeth (CppArray [cpp]) "pack" [CppString "L*"]
-
-cppPackUBits64 :: Cpp -> Cpp
-cppPackUBits64 cpp = cppMeth (CppArray [cpp]) "pack" [CppString "Q*"]
-
-cppPackSBits8 :: Cpp -> Cpp
-cppPackSBits8 cpp = cppMeth (CppArray [cpp]) "pack" [CppString "c*"]
-
-cppPackSBits16 :: Cpp -> Cpp
-cppPackSBits16 cpp = cppMeth (CppArray [cpp]) "pack" [CppString "s*"]
-
-cppPackSBits32 :: Cpp -> Cpp
-cppPackSBits32 cpp = cppMeth (CppArray [cpp]) "pack" [CppString "l*"]
-
-cppPackSBits64 :: Cpp -> Cpp
-cppPackSBits64 cpp = cppMeth (CppArray [cpp]) "pack" [CppString "q*"]
