@@ -227,6 +227,14 @@ int unbox(const Value& value) {
       return value->Char;
     case Closure::Type::String:
       return value->String.front();
+    case Closure::Type::Word8:
+      return static_cast<int>(value->Word8);
+    case Closure::Type::Word16:
+      return static_cast<int>(value->Word16);
+    case Closure::Type::Word32:
+      return static_cast<int>(value->Word32);
+    case Closure::Type::Word64:
+      return static_cast<int>(value->Word64);
     default:
       RAISE("cannot unbox 'int' from type: ", int(value->type));
       return 0;
@@ -284,6 +292,14 @@ long long int unbox(const Value& value) {
       return value->Char;
     case Closure::Type::String:
       return value->String.front();
+    case Closure::Type::Word8:
+      return static_cast<long long int>(value->Word8);
+    case Closure::Type::Word16:
+      return static_cast<long long int>(value->Word16);
+    case Closure::Type::Word32:
+      return static_cast<long long int>(value->Word32);
+    case Closure::Type::Word64:
+      return static_cast<long long int>(value->Word64);
     default:
       RAISE("cannot unbox 'long long int' from type: ", int(value->type));
       return 0;
@@ -293,26 +309,86 @@ long long int unbox(const Value& value) {
 
 template <>
 uint8_t unbox(const Value& value) {
-  assert(value->type == Closure::Type::Word8);
-  return value->Word8;
+  switch (value->type) {
+    case Closure::Type::Word8:
+      return value->Word8;
+    case Closure::Type::Int:
+      return static_cast<uint8_t>(value->Int);
+    case Closure::Type::Word16:
+      return static_cast<uint8_t>(value->Word16);
+    case Closure::Type::Word32:
+      return static_cast<uint8_t>(value->Word32);
+    case Closure::Type::Word64:
+      return static_cast<uint8_t>(value->Word64);
+    case Closure::Type::BigInt:
+       return static_cast<uint8_t>(value->BigInt);
+    default:
+      RAISE("cannot unbox 'uint8_t' from type: ", int(value->type));
+      return 0;
+  }
 }
 
 template <>
 uint16_t unbox(const Value& value) {
-  assert(value->type == Closure::Type::Word16);
-  return value->Word16;
+  switch (value->type) {
+    case Closure::Type::Word16:
+      return value->Word16;
+    case Closure::Type::Int:
+      return static_cast<uint16_t>(value->Int);
+    case Closure::Type::Word8:
+      return static_cast<uint16_t>(value->Word8);
+    case Closure::Type::Word32:
+      return static_cast<uint16_t>(value->Word32);
+    case Closure::Type::Word64:
+      return static_cast<uint16_t>(value->Word64);
+    case Closure::Type::BigInt:
+       return static_cast<uint16_t>(value->BigInt);
+    default:
+      RAISE("cannot unbox 'uint16_t' from type: ", int(value->type));
+      return 0;
+  }
 }
 
 template <>
 uint32_t unbox(const Value& value) {
-  assert(value->type == Closure::Type::Word32);
-  return value->Word32;
+  switch (value->type) {
+    case Closure::Type::Word32:
+      return value->Word32;
+    case Closure::Type::Int:
+      return static_cast<uint32_t>(value->Int);
+    case Closure::Type::Word8:
+      return static_cast<uint32_t>(value->Word8);
+    case Closure::Type::Word16:
+      return static_cast<uint32_t>(value->Word16);
+    case Closure::Type::Word64:
+      return static_cast<uint32_t>(value->Word64);
+    case Closure::Type::BigInt:
+       return static_cast<uint32_t>(value->BigInt);
+    default:
+      RAISE("cannot unbox 'uint32_t' from type: ", int(value->type));
+      return 0;
+  }
 }
 
 template <>
 uint64_t unbox(const Value& value) {
-  assert(value->type == Closure::Type::Word64);
-  return value->Word64;
+  switch (value->type) {  
+    case Closure::Type::Word64:
+      return value->Word64;
+    case Closure::Type::Int:
+      return static_cast<uint64_t>(value->Int);
+    case Closure::Type::Word8:
+      return static_cast<uint64_t>(value->Word8);
+    case Closure::Type::Word16:
+      return static_cast<uint64_t>(value->Word16);
+    case Closure::Type::Word32:
+      return static_cast<uint64_t>(value->Word32);
+    case Closure::Type::BigInt:
+       return static_cast<uint64_t>(value->BigInt);
+    default:
+      RAISE("cannot unbox 'uint64_t' from type: ", int(value->type));
+      return 0;
+  }
 }
 
 
@@ -605,11 +681,19 @@ Value charCode(const Value& value) {
 Value fromCharCode(const Value& value) {
   switch (value->type) {
     case Closure::Type::Int:
-      return box<char32_t>(value->Int);
+      return box<char32_t>(static_cast<char32_t>(value->Int));
     case Closure::Type::Char:
       return value;
     case Closure::Type::BigInt:
-      return box<char32_t>(static_cast<int>(value->BigInt));
+      return box<char32_t>(static_cast<char32_t>(value->BigInt));
+    case Closure::Type::Word8:
+      return box<char32_t>(static_cast<char32_t>(value->Word8));
+    case Closure::Type::Word16:
+      return box<char32_t>(static_cast<char32_t>(value->Word16));
+    case Closure::Type::Word32:
+      return box<char32_t>(static_cast<char32_t>(value->Word32));
+    case Closure::Type::Word64:
+      return box<char32_t>(static_cast<char32_t>(value->Word64));
     default:
       RAISE("cannot create char32_t from code type: ", int(value->type));
       return value;
