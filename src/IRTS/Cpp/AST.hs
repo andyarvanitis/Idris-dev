@@ -4,6 +4,7 @@ module IRTS.Cpp.AST where
 
 import Data.Word
 import Data.Char (isDigit)
+import Data.List (intersperse)
 
 import qualified Data.Text as T
 
@@ -87,7 +88,9 @@ ffi :: String -> [String] -> T.Text
 ffi code args = let parsed = ffiParse code in
                     case ffiError parsed of
                          Just err -> error err
-                         Nothing  -> renderFFI parsed args
+                         Nothing  -> if (any isPosArg parsed)
+                                       then renderFFI parsed args
+                                       else renderFFI (parsed ++ defArgSeq) args
   where
     ffiParse :: String -> [FFI]
     ffiParse ""           = []
@@ -102,6 +105,11 @@ ffi code args = let parsed = ffiParse code in
           [FFIError "FFI - Invalid positional argument"]
     ffiParse (s:ss) = FFICode s : ffiParse ss
 
+    isPosArg :: FFI -> Bool
+    isPosArg x = case x of FFIArg _ -> True
+                           _        -> False
+    defArgSeq :: [FFI]
+    defArgSeq = FFICode '(' : intersperse (FFICode ',') (map FFIArg (take (length args) [0..])) ++ [FFICode ')']
 
     ffiError :: [FFI] -> Maybe String
     ffiError []                 = Nothing
@@ -186,7 +194,7 @@ compileCpp' indent (CppNew name args) =
   `T.append` T.intercalate "," (map (compileCpp' 0) args)
   `T.append` ")"
 
-compileCpp' indent (CppError exc) =
+compileCpp' indent (CppError exc) = compileCpp CppNull `T.append` ";" `T.append`
   "cout << \"" `T.append` T.pack exc `T.append` "\"" `T.append` "; assert(false)"
 
 compileCpp' indent (CppBinOp op lhs rhs) =
