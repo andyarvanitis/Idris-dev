@@ -871,8 +871,9 @@ cppOP _ reg op args = CppAssign (translateReg reg) cppOP'
       | LStrRev     <- op
       , (arg:_)     <- args = cppCall "reverse" [cppUNBOXED (translateReg arg) "string"]
       | LStrIndex   <- op
-      , (lhs:rhs:_) <- args = cppBOX $ CppIndex (cppUNBOXED (translateReg lhs) "string") 
-                                                (cppUNBOXED (translateReg rhs) "int")
+      , (lhs:rhs:_) <- args = cppBOXTYPE (
+                                cppMeth (cppUNBOXED (translateReg lhs) "string") "at" [cppUNBOXED (translateReg rhs) "int"]
+                              ) "char32_t"
       | LStrTail    <- op
       , (arg:_)     <- args =
           let v = cppUNBOXED (translateReg arg) "string" in

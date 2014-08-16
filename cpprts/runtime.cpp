@@ -29,7 +29,10 @@
 
 using namespace std;  
 
+struct Closure;
 struct Constructor;
+
+using Value = shared_ptr<Closure>;
 
 struct Closure {
   enum class Type {
@@ -59,11 +62,12 @@ struct Closure {
     uint64_t Word64;
   };
 
-  Closure(const string& s) : type(Closure::Type::String), String(s) {}
-  Closure(const shared_ptr<Constructor>& c) : type(Closure::Type::Con), Con(c) {}
+  Closure(const Type t) : type(t) {}
+  Closure(const string& s) : type(Type::String), String(s) {}
+  Closure(const shared_ptr<Constructor>& c) : type(Type::Con), Con(c) {}
 
   template <typename T>
-  static Closure* Box(T); // { RAISE("unknown box operation type", ""); return nullptr; }
+  static Value Box(T); // { RAISE("unknown box operation type", ""); return nullptr; }
 
   Closure(const Closure& c) : type(c.type) {
     switch (c.type) {
@@ -102,87 +106,84 @@ struct Closure {
   }
 
   ~Closure() {}
-  private:
-    Closure(const Closure::Type t) : type(t) {}
 };
 
 template <>
-Closure* Closure::Box(const int i) {
-  auto closure = new Closure(Closure::Type::Int);
-  closure->Int = i;
-  return closure;
+Value Closure::Box(const int i) {
+  auto boxedValue = make_shared<Closure>(Type::Int);
+  boxedValue->Int = i;
+  return boxedValue;
 }
 
 template <>
-Closure* Closure::Box(const long long int i) {
-  auto closure = new Closure(Closure::Type::BigInt);
-  closure->BigInt = i;
-  return closure;
+Value Closure::Box(const long long int i) {
+  auto boxedValue = make_shared<Closure>(Type::BigInt);
+  boxedValue->BigInt = i;
+  return boxedValue;
 }
 
 template <>
-Closure* Closure::Box(const unsigned long int i) {
-  auto closure = new Closure(Closure::Type::BigInt);
-  closure->BigInt = i;
-  return closure;
+Value Closure::Box(const unsigned long int i) {
+  auto boxedValue = make_shared<Closure>(Type::BigInt);
+  boxedValue->BigInt = i;
+  return boxedValue;
 }
 
 template <>
-Closure* Closure::Box(const double d) {
-  auto closure = new Closure(Closure::Type::Float);
-  closure->Float = d;
-  return closure;
+Value Closure::Box(const double d) {
+  auto boxedValue = make_shared<Closure>(Type::Float);
+  boxedValue->Float = d;
+  return boxedValue;
 }
 
 template <>
-Closure* Closure::Box(const string& s) {
-  return new Closure(s);
+Value Closure::Box(const string& s) {
+  return make_shared<Closure>(s);
 }
 
 template <>
-Closure* Closure::Box(const string s) {
-  return new Closure(s);
+Value Closure::Box(const string s) {
+  return make_shared<Closure>(s);
 }
 
 template <>
-Closure* Closure::Box(const char32_t c) {
-  auto closure = new Closure(Closure::Type::Char);
-  closure->Char = c;
-  return closure;
+Value Closure::Box(const char32_t c) {
+  auto boxedValue = make_shared<Closure>(Type::Char);
+  boxedValue->Char = c;
+  return boxedValue;
 }
 
 template <>
-Closure* Closure::Box(const uint8_t w) {
-  auto closure = new Closure(Closure::Type::Word8);
-  closure->Word8 = w;
-  return closure;
+Value Closure::Box(const uint8_t w) {
+  auto boxedValue = make_shared<Closure>(Type::Word8);
+  boxedValue->Word8 = w;
+  return boxedValue;
 }
 
 template <>
-Closure* Closure::Box(const uint16_t w) {
-  auto closure = new Closure(Closure::Type::Word16);
-  closure->Word16 = w;
-  return closure;
+Value Closure::Box(const uint16_t w) {
+  auto boxedValue = make_shared<Closure>(Type::Word16);
+  boxedValue->Word16 = w;
+  return boxedValue;
 }
 
 template <>
-Closure* Closure::Box(const uint32_t w) {
-  auto closure = new Closure(Closure::Type::Word32);
-  closure->Word32 = w;
-  return closure;
+Value Closure::Box(const uint32_t w) {
+  auto boxedValue = make_shared<Closure>(Type::Word32);
+  boxedValue->Word32 = w;
+  return boxedValue;
 }
 
 template <>
-Closure* Closure::Box(const uint64_t w) {
-  auto closure = new Closure(Closure::Type::Word64);
-  closure->Word64 = w;
-  return closure;
+Value Closure::Box(const uint64_t w) {
+  auto boxedValue = make_shared<Closure>(Type::Word64);
+  boxedValue->Word64 = w;
+  return boxedValue;
 }
 
-
+//---------------------------------------------------------------------------------------
 
 using IndexType = size_t;
-using Value = shared_ptr<Closure>;
 using Func = void (*)(IndexType,IndexType);
 
 struct Constructor {
@@ -199,11 +200,10 @@ struct Constructor {
 
 
 //---------------------------------------------------------------------------------------
-//---------------------------------------------------------------------------------------
 
 template <typename T>
 Value box(T value) {
-  return Value(Closure::Box<T>(value));
+  return Closure::Box<T>(value);
 }
 
 Value MakeCon(const size_t tag, const vector<Value>& args, const Func& function){
