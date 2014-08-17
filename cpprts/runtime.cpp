@@ -815,27 +815,29 @@ nullptr_t putStr(const string str) {
 }
 
 void* fileOpen(const string name, const string mode) {
-  fstream::openmode openmode = fstream::in;
+  fstream::openmode openmode = 0x00;
   for (auto flag : mode) {
     switch (flag) {
       case 'r':
         openmode |= fstream::in;
         break;
       case 'w':
-        openmode |= fstream::out;
+        openmode |= fstream::out | fstream::trunc;
         break;
       case 'a':
-        openmode |= fstream::app;
+        openmode |= fstream::out | fstream::app;
         break;
       case 'b':
         openmode |= fstream::binary;
         break;
       case '+':
-        openmode |= (openmode & fstream::out) ? fstream::trunc : fstream::app;
+        openmode |= fstream::out | (openmode & fstream::in ? fstream::app : fstream::in);
         break;
     }
   }
-  return new fstream(name, openmode);
+  auto file = new fstream();
+  file->open(name, openmode);
+  return file->fail() ? nullptr : file;
 }
 
 void fileClose(void* h) {
