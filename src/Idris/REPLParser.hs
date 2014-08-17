@@ -32,6 +32,7 @@ cmd xs = try (do P.lchar ':'; docmd (sortBy (\x y -> compare (length y) (length 
           docmd (x:xs) = try (discard (P.reserved x)) <|> docmd xs
 
 pCmd :: P.IdrisParser Command
+
 pCmd = do P.whiteSpace; do cmd ["q", "quit"]; eof; return Quit
               <|> do cmd ["h", "?", "help"]; eof; return Help
               <|> do cmd ["w", "warranty"]; eof; return Warranty
@@ -40,9 +41,14 @@ pCmd = do P.whiteSpace; do cmd ["q", "quit"]; eof; return Quit
                           return (ModImport (toPath f))
               <|> do cmd ["e", "edit"]; eof; return Edit
               <|> do cmd ["exec", "execute"]; eof; return Execute
+              <|> try (do cmd ["c", "compile"]
+                          i <- get
+                          f <- P.identifier
+                          eof
+                          return (Compile (Via "c") f))
               <|> do cmd ["c", "compile"]
                      i <- get
-                     c <- option (opt_codegen $ idris_options i) codegenOption
+                     c <- codegenOption
                      f <- P.identifier
                      eof
                      return (Compile c f)
@@ -53,6 +59,8 @@ pCmd = do P.whiteSpace; do cmd ["q", "quit"]; eof; return Quit
               <|> do cmd ["let"]
                      defn <- concat <$> many (P.decl defaultSyntax)
                      return (NewDefn defn)
+              <|> do cmd ["unlet","undefine"]
+                     Undefine `fmap` many P.name
               <|> do cmd ["lto", "loadto"];
                      toline <- P.natural
                      f <- many anyChar;
@@ -139,12 +147,9 @@ pOption = do discard (P.symbol "errorcontext"); return ErrContext
       <|> do discard (P.symbol "warnreach"); return WarnReach
 
 codegenOption :: P.IdrisParser Codegen
-codegenOption = do discard (P.symbol "javascript"); return ViaJavaScript
-            <|> do discard (P.symbol "node"); return ViaNode
-            <|> do discard (P.symbol "Java"); return ViaJava
-            <|> do discard (P.symbol "llvm"); return ViaLLVM
-            <|> do discard (P.symbol "bytecode"); return Bytecode
-            <|> do discard (P.symbol "C"); return ViaC
+codegenOption = do discard (P.symbol "bytecode"); return Bytecode
+            <|> do x <- P.identifier
+                   return (Via (map toLower x))
 
 pConsoleWidth :: P.IdrisParser ConsoleWidth
 pConsoleWidth = do discard (P.symbol "auto"); return AutomaticWidth

@@ -251,6 +251,9 @@ Extra-source-files:
                        test/reg050/run
                        test/reg050/*.idr
                        test/reg050/expected
+                       test/reg051/run
+                       test/reg051/*.idr
+                       test/reg051/expected
 
                        test/basic001/run
                        test/basic001/*.idr
@@ -746,4 +749,16 @@ Executable idris
   ghc-prof-options: -auto-all -caf-all
   ghc-options:      -threaded -rtsopts -funbox-strict-fields
 
+Executable idris-c
+  Main-is:        Main.hs
+  hs-source-dirs: codegen/idris-c
+
+  Build-depends:  idris
+                , base
+                , filepath
+                , haskeline >= 0.7
+                , transformers
+
+  ghc-prof-options: -auto-all -caf-all
+  ghc-options:      -threaded -rtsopts -funbox-strict-fields
 

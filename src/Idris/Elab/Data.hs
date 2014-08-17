@@ -132,8 +132,15 @@ elabData info syn doc argDocs fc opts (PDatadecl n t_in dcons)
         -- them for repeated arguments
 
         findParams :: [Type] -> [Int]
-        findParams ts = let allapps = concatMap getDataApp ts in
-                            paramPos allapps
+        findParams ts = let allapps = map getDataApp ts
+           -- do each constructor separately, then merge the results (names
+           -- may change between constructors)
+                            conParams = map paramPos allapps in
+                            inAll conParams
+
+        inAll :: [[Int]] -> [Int]
+        inAll [] = []
+        inAll (x : xs) = filter (\p -> all (\ps -> p `elem` ps) xs) x
 
         paramPos [] = []
         paramPos (args : rest)
@@ -199,7 +206,7 @@ elabCon :: ElabInfo -> SyntaxInfo -> Name -> Bool ->
            (Docstring, [(Name, Docstring)], Name, PTerm, FC, [Name]) -> Idris (Name, Type)
 elabCon info syn tn codata (doc, argDocs, n, t_in, fc, forcenames)
     = do checkUndefined fc n
-         (cty, t, inacc) <- buildType info syn fc [] n (if codata then mkLazy t_in else t_in)
+         (cty, t, inacc) <- buildType info syn fc [Constructor] n (if codata then mkLazy t_in else t_in)
          ctxt <- getContext
          let cty' = normalise ctxt [] cty
 

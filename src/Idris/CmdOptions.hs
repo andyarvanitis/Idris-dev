@@ -8,6 +8,7 @@ import IRTS.CodegenCommon
 
 import Options.Applicative
 import Options.Applicative.Arrows
+import Data.Char
 import Data.Maybe
 
 import qualified Text.PrettyPrint.ANSI.Leijen as PP
@@ -77,7 +78,7 @@ parseFlags = many $
   <|> flag' NoBasePkgs (long "nobasepkgs")
   <|> flag' NoPrelude (long "noprelude")
   <|> flag' NoBuiltins (long "nobuiltins")
-  <|> flag' NoREPL (long "check")
+  <|> flag' NoREPL (long "check" <> help "Typecheck only, don't start the REPL")
   <|> (Output <$> strOption (short 'o' <> long "output" <> metavar "FILE" <> help "Specify output file"))
   <|> flag' TypeCase (long "typecase")
   <|> flag' TypeInType (long "typeintype")
@@ -141,11 +142,6 @@ preProcOpts (BCAsm s:xs) ys = BCAsm s : NoREPL : preProcOpts xs ys
 preProcOpts (x:xs) ys = preProcOpts xs (x:ys)
 
 parseCodegen :: String -> Codegen
-parseCodegen "C" = ViaC
-parseCodegen "Java" = ViaJava
 parseCodegen "bytecode" = Bytecode
-parseCodegen "javascript" = ViaJavaScript
-parseCodegen "node" = ViaNode
-parseCodegen "llvm" = ViaLLVM
-parseCodegen "c++" = ViaCpp
-parseCodegen _ = error "unknown codegen" -- FIXME: partial function
+parseCodegen cg = Via (map toLower cg)
+

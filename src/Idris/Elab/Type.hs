@@ -86,11 +86,18 @@ buildType info syn fc opts n ty' = do
          i <- getIState
          let (inaccData, impls) = unzip $ getUnboundImplicits i cty ty
          let inacc = inaccessibleImps 0 cty inaccData
-         logLvl 3 $ show n ++ ": inaccessible arguments: " ++ show inacc
+         logLvl 3 $ show n ++ ": inaccessible arguments: " ++ show inacc ++
+                     " from " ++ show (cty, ty)
 
          putIState $ i { idris_implicits = addDef n impls (idris_implicits i) }
          logLvl 3 ("Implicit " ++ show n ++ " " ++ show impls)
          addIBC (IBCImp n)
+
+         when (Constructor `notElem` opts) $ do
+             let pnames = getParamsInType i [] impls cty
+             let fninfo = FnInfo (param_pos 0 pnames cty)
+             setFnInfo n fninfo
+             addIBC (IBCFnInfo n fninfo)
 
          return (cty, ty, inacc)
   where
@@ -98,6 +105,10 @@ buildType info syn fc opts n ty' = do
     patToImp (Bind n b sc) = Bind n b (patToImp sc)
     patToImp t = t
 
+    param_pos i ns (Bind n (Pi t) sc) 
+        | n `elem` ns = i : param_pos (i + 1) ns sc
+        | otherwise = param_pos (i + 1) ns sc
+    param_pos i ns t = []
 
 -- | Elaborate a top-level type declaration - for example, "foo : Int -> Int".
 elabType :: ElabInfo -> SyntaxInfo -> Docstring -> [(Name, Docstring)] ->

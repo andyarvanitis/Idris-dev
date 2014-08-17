@@ -941,11 +941,7 @@ Codegen ::= 'C'
 @
 -}
 codegen_ :: IdrisParser Codegen
-codegen_ = do reserved "C"; return ViaC
-       <|> do reserved "Java"; return ViaJava
-       <|> do reserved "JavaScript"; return ViaJavaScript
-       <|> do reserved "Node"; return ViaNode
-       <|> do reserved "LLVM"; return ViaLLVM
+codegen_ = do n <- identifier; return (Via (map toLower n))
        <|> do reserved "Bytecode"; return Bytecode
        <|> do reserved "Cpp"; return ViaCpp
        <?> "code generation language"
@@ -1241,7 +1237,9 @@ loadSource lidr f toline
                   let def_total = default_total i
                   file_in <- runIO $ readFile f
                   file <- if lidr then tclift $ unlit f file_in else return file_in
-                  (mname, imports, pos) <- parseImports f file
+                  (mname, imports_in, pos) <- parseImports f file
+                  ai <- getAutoImports
+                  let imports = map (\n -> (n, Just n, emptyFC)) ai ++ imports_in
                   ids <- allImportDirs
                   ibcsd <- valIBCSubDir i
                   mapM_ (\f -> do fp <- findImport ids ibcsd f
@@ -1265,6 +1263,9 @@ loadSource lidr f toline
                   i <- getIState
                   putIState (i { default_access = Hidden, module_aliases = modAliases })
                   clearIBC -- start a new .ibc file
+                  -- record package info in .ibc
+                  imps <- allImportDirs 
+                  mapM_ addIBC (map IBCImportDir imps)
                   mapM_ (addIBC . IBCImport) [realName | (realName, alias, fc) <- imports]
                   let syntax = defaultSyntax{ syn_namespace = reverse mname,
                                               maxline = toline }

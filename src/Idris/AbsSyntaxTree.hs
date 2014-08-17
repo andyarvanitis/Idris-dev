@@ -76,7 +76,8 @@ data IOption = IOption { opt_logLevel   :: Int,
                          opt_optLevel   :: Word,
                          opt_cmdline    :: [Opt], -- remember whole command line
                          opt_origerr    :: Bool,
-                         opt_autoSolve  :: Bool -- ^ automatically apply "solve" tactic in prover
+                         opt_autoSolve  :: Bool, -- ^ automatically apply "solve" tactic in prover
+                         opt_autoImport :: [FilePath] -- ^ e.g. Builtins+Prelude
                        }
     deriving (Show, Eq)
 
@@ -90,7 +91,7 @@ defaultOpts = IOption { opt_logLevel   = 0
                       , opt_verbose    = True
                       , opt_nobanner   = False
                       , opt_quiet      = False
-                      , opt_codegen    = ViaC
+                      , opt_codegen    = Via "c"
                       , opt_outputTy   = Executable
                       , opt_ibcsubdir  = ""
                       , opt_importdirs = []
@@ -100,6 +101,7 @@ defaultOpts = IOption { opt_logLevel   = 0
                       , opt_cmdline    = []
                       , opt_origerr    = False
                       , opt_autoSolve  = True
+                      , opt_autoImport = []
                       }
 
 data PPOption = PPOption {
@@ -156,6 +158,7 @@ data IState = IState {
     idris_calledgraph :: Ctxt [Name],
     idris_docstrings :: Ctxt (Docstring, [(Name, Docstring)]),
     idris_tyinfodata :: Ctxt TIData,
+    idris_fninfo :: Ctxt FnInfo,
     idris_totcheck :: [(FC, Name)], -- names to check totality on
     idris_defertotcheck :: [(FC, Name)], -- names to check at the end
     idris_totcheckfail :: [(FC, String)],
@@ -201,7 +204,8 @@ data IState = IState {
     idris_consolewidth :: ConsoleWidth, -- ^ How many chars wide is the console?
     idris_postulates :: S.Set Name,
     idris_whocalls :: Maybe (M.Map Name [Name]),
-    idris_callswho :: Maybe (M.Map Name [Name])
+    idris_callswho :: Maybe (M.Map Name [Name]),
+    idris_repl_defs :: [Name] -- ^ List of names that were defined in the repl, and can be re-/un-defined
    }
 
 -- Required for parsers library, and therefore trifecta
@@ -247,6 +251,7 @@ data IBCWrite = IBCFix FixDecl
               | IBCSyntax Syntax
               | IBCKeyword String
               | IBCImport FilePath
+              | IBCImportDir FilePath
               | IBCObj Codegen FilePath
               | IBCLib Codegen String
               | IBCCGFlag Codegen String
@@ -256,6 +261,7 @@ data IBCWrite = IBCFix FixDecl
               | IBCMetaInformation Name MetaInformation
               | IBCTotal Name Totality
               | IBCFlags Name [FnOpt]
+              | IBCFnInfo Name FnInfo
               | IBCTrans (Term, Term)
               | IBCErrRev (Term, Term)
               | IBCCG Name
@@ -276,11 +282,11 @@ idrisInit :: IState
 idrisInit = IState initContext [] [] emptyContext emptyContext emptyContext
                    emptyContext emptyContext emptyContext emptyContext
                    emptyContext emptyContext emptyContext emptyContext
-                   emptyContext emptyContext
+                   emptyContext emptyContext emptyContext
                    [] [] [] defaultOpts 6 [] [] [] [] [] [] [] [] [] [] [] [] []
                    [] [] Nothing [] Nothing [] [] Nothing Nothing [] Hidden False [] Nothing [] []
                    (RawOutput stdout) True defaultTheme [] (0, emptyContext) emptyContext M.empty
-                   AutomaticWidth S.empty Nothing Nothing
+                   AutomaticWidth S.empty Nothing Nothing []
 
 -- | The monad for the main REPL - reading and processing files and updating
 -- global state (hence the IO inner monad).
@@ -289,11 +295,12 @@ type Idris = StateT IState (ErrorT Err IO)
 
 -- Commands in the REPL
 
-data Codegen = ViaC
-             | ViaJava
-             | ViaNode
-             | ViaJavaScript
-             | ViaLLVM
+data Codegen = Via String
+--              | ViaC
+--              | ViaJava
+--              | ViaNode
+--              | ViaJavaScript
+--              | ViaLLVM
              | Bytecode
              | ViaCpp
     deriving (Show, Eq)
@@ -303,6 +310,7 @@ data Command = Quit
              | Help
              | Eval PTerm
              | NewDefn [PDecl] -- ^ Each 'PDecl' should be either a type declaration (at most one) or a clause defining the same name.
+             | Undefine [Name]
              | Check PTerm
              | DocStr (Either Name Const)
              | TotCheck Name
@@ -485,6 +493,7 @@ data FnOpt = Inlinable -- always evaluate when simplifying
            | ErrorReverse     -- ^^ attempt to reverse normalise before showing in error
            | Reflection -- a reflecting function, compile-time only
            | Specialise [(Name, Maybe Int)] -- specialise it, freeze these names
+           | Constructor -- Data constructor type
     deriving (Show, Eq)
 {-!
 deriving instance Binary FnOpt
@@ -899,6 +908,13 @@ deriving instance NFData ClassInfo
 data TIData = TIPartial -- ^ a function with a partially defined type
             | TISolution [Term] -- ^ possible solutions to a metavariable in a type
     deriving Show
+
+-- | Miscellaneous information about functions
+data FnInfo = FnInfo { fn_params :: [Int] }
+    deriving Show
+{-!
+deriving instance Binary FnInfo
+!-}
 
 data OptInfo = Optimise { inaccessible :: [(Int,Name)],  -- includes names for error reporting
                           detaggable :: Bool }
