@@ -194,8 +194,7 @@ compileCpp' indent (CppNew name args) =
   `T.append` T.intercalate "," (map (compileCpp' 0) args)
   `T.append` ")"
 
-compileCpp' indent (CppError exc) = compileCpp CppNull `T.append` ";" `T.append`
-  "cout << \"" `T.append` T.pack exc `T.append` "\"" `T.append` "; assert(false)"
+compileCpp' indent (CppError exc) = compileCpp (cppCall "putStr" [CppString exc]) `T.append` "; assert(false)"
 
 compileCpp' indent (CppBinOp op lhs rhs) =
     compileCpp' indent lhs

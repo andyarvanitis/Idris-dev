@@ -7,6 +7,7 @@
 #include <string>
 #include <sstream>
 #include <iostream>
+#include <fstream>
 #include <algorithm>
 #include <cassert>
 #include <sys/utsname.h>
@@ -37,7 +38,8 @@ using Value = shared_ptr<Closure>;
 struct Closure {
   enum class Type {
     Int, BigInt, Float, String, Char, Con,
-    Word8, Word16, Word32, Word64
+    Word8, Word16, Word32, Word64,
+    Ptr
   };
   
   enum class Op {
@@ -48,6 +50,7 @@ struct Closure {
   };
   
   const Type type;
+
   union {
     int Int;
     long long int BigInt;
@@ -55,11 +58,11 @@ struct Closure {
     string String;
     char32_t Char;
     shared_ptr<Constructor> Con;
-    
     uint8_t  Word8;
     uint16_t Word16;
     uint32_t Word32;
     uint64_t Word64;
+    void* Ptr;
   };
 
   Closure(const Type t) : type(t) {}
@@ -89,7 +92,6 @@ struct Closure {
       case Type::Con:
         Con = c.Con;
         break;
-
       case Type::Word8:
         Word8 = c.Word8;
         break;
@@ -101,6 +103,9 @@ struct Closure {
         break;
       case Type::Word64:
         Word64 = c.Word64;
+        break;
+      case Type::Ptr:
+        Ptr = c.Ptr;
         break;
     }
   }
@@ -178,6 +183,13 @@ template <>
 Value Closure::Box(const uint64_t w) {
   auto boxedValue = make_shared<Closure>(Type::Word64);
   boxedValue->Word64 = w;
+  return boxedValue;
+}
+
+template <>
+Value Closure::Box(void* p) {
+  auto boxedValue = make_shared<Closure>(Type::Ptr);
+  boxedValue->Ptr = p;
   return boxedValue;
 }
 
@@ -389,6 +401,12 @@ uint64_t unbox(const Value& value) {
       RAISE("cannot unbox 'uint64_t' from type: ", int(value->type));
       return 0;
   }
+}
+
+template <>
+void* unbox(const Value& value) {
+  assert(value->type == Closure::Type::Ptr);
+  return value->Ptr;
 }
 
 
@@ -785,6 +803,75 @@ T reverse(const T& container) {
   T rcontainer(container);
   std::reverse(rcontainer.begin(),rcontainer.end());
   return rcontainer;
+}
+
+//---------------------------------------------------------------------------------------
+// C++ versions of the same C runtime functions
+//---------------------------------------------------------------------------------------
+
+nullptr_t putStr(const string str) {
+  cout << str;
+  return nullptr;
+}
+
+void* fileOpen(const string name, const string mode) {
+  fstream::openmode openmode = fstream::in;
+  for (auto flag : mode) {
+    switch (flag) {
+      case 'r':
+        openmode |= fstream::in;
+        break;
+      case 'w':
+        openmode |= fstream::out;
+        break;
+      case 'a':
+        openmode |= fstream::app;
+        break;
+      case 'b':
+        openmode |= fstream::binary;
+        break;
+      case '+':
+        openmode |= (openmode & fstream::out) ? fstream::trunc : fstream::app;
+        break;
+    }
+  }
+  return new fstream(name, openmode);
+}
+
+void fileClose(void* h) {
+  assert(h);
+  auto file = static_cast<fstream*>(h);
+  file->close();
+  delete file;
+}
+
+string freadStr(void* h) {
+  assert(h);
+  auto file = static_cast<fstream*>(h);
+  string str;
+  getline(*file,str);
+  if (not file->eof()) {
+    str += '\n';
+  }
+  return str;
+}
+
+void fputStr(void* h, const string str) {
+  assert(h);
+  auto file = static_cast<fstream*>(h);
+  *file << str;
+}
+
+int fileEOF(void* h) {
+  assert(h);
+  auto file = static_cast<fstream*>(h);
+  return file->eof();
+}
+
+int fileError(void* h) {
+  assert(h);
+  auto file = static_cast<fstream*>(h);
+  return file->fail();
 }
 
 //---------------------------------------------------------------------------------------

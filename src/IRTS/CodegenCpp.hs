@@ -509,8 +509,8 @@ cppTAILCALL _ n =
     CppIdent "vmcall"
   ) [CppIdent (translateName n), CppArray [cppOLDBASE,CppNum (CppInt 0)]]
 
-cppFOREIGN :: CompileInfo -> Reg -> String -> [(FType, Reg)] -> Cpp
-cppFOREIGN _ reg n args
+cppFOREIGN :: CompileInfo -> Reg -> String -> [(FType, Reg)] -> FType -> Cpp
+cppFOREIGN _ reg n args ret
   | n == "putStr"
   , [(FString, arg)] <- args =
       CppAssign (
@@ -540,7 +540,10 @@ cppFOREIGN _ reg n args
      CppAssign (
        translateReg reg
      ) (
-       cppBOX $ CppFFI n (map generateWrapper args)
+       let callexpr = CppFFI n (map generateWrapper args) in
+       case ret of
+         FUnit -> CppBinOp "," CppNull callexpr
+         _     -> cppBOX callexpr
      )
     where
       generateWrapper :: (FType, Reg) -> Cpp
@@ -880,6 +883,8 @@ cppOP _ reg op args = CppAssign (translateReg reg) cppOP'
               cppBOX $ CppTernary (cppAnd (translateReg arg) (cppGreaterThan (strLen v) cppOne))
                                   (cppMeth v "substr" [cppOne, CppBinOp "-" (strLen v) cppOne])
                                   (CppString "")
+      | LReadStr    <- op
+      , (arg:_)     <- args = cppBOX $ cppCall "freadStr" [cppUNBOXED (translateReg arg) "void*"]
 
       | LSystemInfo <- op
       , (arg:_) <- args = cppBOX $ cppCall "systemInfo"  [translateReg arg]
@@ -974,7 +979,7 @@ translateBC info bc
   | NULL r                <- bc = cppNULL info r
   | CALL n                <- bc = cppCALL info n
   | TAILCALL n            <- bc = cppTAILCALL info n
-  | FOREIGNCALL r _ _ n a <- bc = cppFOREIGN info r n a
+  | FOREIGNCALL r _ t n a <- bc = cppFOREIGN info r n a t
   | TOPBASE n             <- bc = cppTOPBASE info n
   | BASETOP n             <- bc = cppBASETOP info n
   | STOREOLD              <- bc = cppSTOREOLD info
