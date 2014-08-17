@@ -385,9 +385,6 @@ cppNotEq lhs rhs = CppBinOp "!=" lhs rhs
 cppGreaterThan :: Cpp -> Cpp -> Cpp
 cppGreaterThan lhs rhs = CppBinOp ">" lhs rhs
 
-cppIsNumber :: Cpp -> Cpp
-cppIsNumber cpp = cppMeth cpp "is_a?" [(CppIdent "Numeric")]
-
 cppZero :: Cpp
 cppZero = CppNum (CppInt 0)
 
@@ -403,4 +400,5 @@ cppIsNotNull cpp = CppBinOp "!=" cpp CppNull
 cppStaticCast :: Cpp -> String -> Cpp
 cppStaticCast cpp typ = cppCall ("static_cast" ++ "<" ++ typ ++ ">") [cpp]
 
-
+cppManagedPtr :: String
+cppManagedPtr = "shared_ptr<void>"

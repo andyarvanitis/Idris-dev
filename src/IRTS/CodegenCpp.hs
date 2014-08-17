@@ -511,14 +511,36 @@ cppTAILCALL _ n =
 
 cppFOREIGN :: CompileInfo -> Reg -> String -> [(FType, Reg)] -> FType -> Cpp
 cppFOREIGN _ reg n args ret
-  | n == "putStr"
-  , [(FString, arg)] <- args =
+  | n == "fileClose"
+  , [(_, fh)] <- args =
       CppAssign (
         translateReg reg
       ) (
-        CppParens $ CppBinOp "," (CppBinOp "<<" (CppIdent "cout") 
-                                                   (cppUNBOXED (translateReg arg) "string" ))
-                                   CppNull
+        cppCall "fileClose" [cppUNBOXED (translateReg fh) cppManagedPtr]
+      )
+
+  | n == "fputStr"
+  , [(_, fh),(_, str)] <- args =
+      CppAssign (
+        translateReg reg
+      ) (
+        cppCall "fputStr" [cppUNBOXED (translateReg fh) cppManagedPtr, cppUNBOXED (translateReg str) "string"]
+      )
+
+  | n == "fileEOF"
+  , [(_, fh)] <- args =
+      CppAssign (
+        translateReg reg
+      ) (
+        cppBOX $ cppCall "fileEOF" [cppUNBOXED (translateReg fh) cppManagedPtr]
+      )
+
+  | n == "fileError"
+  , [(_, fh)] <- args =
+      CppAssign (
+        translateReg reg
+      ) (
+        cppBOX $ cppCall "fileError" [cppUNBOXED (translateReg fh) cppManagedPtr]
       )
 
   | n == "isNull"
@@ -571,7 +593,7 @@ cppFOREIGN _ reg n args ret
       cType FString = CppIdent "string"
       cType FUnit = CppIdent "void"
       cType FPtr = CppIdent "void*"
-      cType FManagedPtr = CppIdent "void *"
+      cType FManagedPtr = CppIdent cppManagedPtr
       cType (FArith ATFloat) = CppIdent "double"
       cType FAny = CppIdent "void*"
       cType (FFunction a b) = CppList [cType a, cType b]
@@ -884,7 +906,7 @@ cppOP _ reg op args = CppAssign (translateReg reg) cppOP'
                                   (cppMeth v "substr" [cppOne, CppBinOp "-" (strLen v) cppOne])
                                   (CppString "")
       | LReadStr    <- op
-      , (arg:_)     <- args = cppBOX $ cppCall "freadStr" [cppUNBOXED (translateReg arg) "void*"]
+      , (arg:_)     <- args = cppBOX $ cppCall "freadStr" [cppUNBOXED (translateReg arg) cppManagedPtr]
 
       | LSystemInfo <- op
       , (arg:_) <- args = cppBOX $ cppCall "systemInfo"  [translateReg arg]
