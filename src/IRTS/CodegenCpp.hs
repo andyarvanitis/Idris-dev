@@ -245,11 +245,14 @@ codegenCpp_all definitions outputType filename includes objs libs flags dbg = do
 
       main :: T.Text
       main = 
-        compileCpp $ CppAlloc "main" (Just $ CppFunction [] mainFun)
+        compileCpp $ CppAlloc "main" (Just $ CppFunction ["int argc", "char* argv[]"] mainFun)
 
       mainFun :: Cpp
       mainFun =
-        CppSeq [ CppAlloc "vm" (Just $ CppNew "make_shared<VirtualMachine>" [])
+        CppSeq [
+                CppAssign (CppIdent "IdrisMain::argc") (CppIdent "argc")
+              , CppAssign (CppIdent "IdrisMain::argv") (CppIdent "argv")
+              , CppAlloc "vm" (Just $ CppNew "make_shared<VirtualMachine>" [])
               , CppApp (CppIdent "schedule") [CppIdent "vm"]
               , CppApp (
                   CppIdent (translateName (sMN 0 "runMain"))

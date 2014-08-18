@@ -161,6 +161,11 @@ Value Closure::Box(char* s) {
 }
 
 template <>
+Value Closure::Box(const char* s) {
+  return s ? make_shared<Closure>(s) : nullptr;
+}
+
+template <>
 Value Closure::Box(const char32_t c) {
   auto boxedValue = make_shared<Closure>(Type::Char);
   boxedValue->Char = c;
@@ -898,5 +903,22 @@ int fileError(shared_ptr<void> h) {
   auto file = static_pointer_cast<fstream>(h);
   return file->fail();
 }
+
+//---------------------------------------------------------------------------------------
+struct IdrisMain {
+  static int argc;
+  static char ** argv;
+};
+
+inline int idris_numArgs() {
+  return IdrisMain::argc;
+}
+
+inline const char* idris_getArg(int i) {
+  return IdrisMain::argv[i];
+}
+
+int IdrisMain::argc = 0;
+char **IdrisMain::argv = nullptr;
 
 //---------------------------------------------------------------------------------------
