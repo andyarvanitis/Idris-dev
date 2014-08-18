@@ -10,6 +10,7 @@
 #include <fstream>
 #include <algorithm>
 #include <cassert>
+#include <cstring>
 #include <sys/utsname.h>
 
 #if __has_feature(cxx_exceptions)
@@ -438,7 +439,7 @@ void* unbox(const Value& value) {
 
 
 template <typename T>
-Value general_operator(const Closure::Op op, const Value& lhs, const Value& rhs) {
+Value general_operator(const Closure::Op op, const Value& lhs, const Value& rhs = nullptr) {
   switch (op) {
     case Closure::Op::Equals:
       return box<int>(unbox<T>(lhs) == unbox<T>(rhs));
@@ -584,7 +585,11 @@ Value operator>>(const Value& lhs, const Value& rhs) {
 }
 
 Value to_string(const Value& value) {
-  return find_type_and_apply_operator(Closure::Op::ToString, value);
+  if (value->type == Closure::Type::Word8) { // necessary since template is ambiguous with 'char'
+    return general_operator<int>(Closure::Op::ToString, value);
+  } else {
+    return find_type_and_apply_operator(Closure::Op::ToString, value);
+  }
 }
 
 //---------------------------------------------------------------------------------------
@@ -920,5 +925,23 @@ inline const char* idris_getArg(int i) {
 
 int IdrisMain::argc = 0;
 char **IdrisMain::argv = nullptr;
+
+//---------------------------------------------------------------------------------------
+
+inline void idris_memset(void* ptr, intptr_t offset, uint8_t c, intptr_t size) {
+  memset(((uint8_t*)ptr) + offset, c, size);
+}
+
+inline uint8_t idris_peek(void* ptr, intptr_t offset) {
+  return *(((uint8_t*)ptr) + offset);
+}
+
+inline void idris_poke(void* ptr, intptr_t offset, uint8_t data) {
+  *(((uint8_t*)ptr) + offset) = data;
+}
+
+inline void idris_memmove(void* dest, void* src, intptr_t dest_offset, intptr_t src_offset, intptr_t size) {
+  memmove((uint8_t*)dest + dest_offset, (uint8_t*)src + src_offset, size);
+}
 
 //---------------------------------------------------------------------------------------

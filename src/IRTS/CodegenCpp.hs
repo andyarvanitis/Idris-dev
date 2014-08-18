@@ -746,6 +746,10 @@ cppOP _ reg op args = CppAssign (translateReg reg) cppOP'
             )
           ]
 
+      | (LTrunc ITNative (ITFixed IT8)) <- op
+      , (arg:_)                               <- args =
+          cppBOXTYPE (CppBinOp "&" (cppUNBOXED (translateReg arg) "int") (CppRaw "0xFFu")) "uint8_t"
+
       | (LTrunc (ITFixed IT16) (ITFixed IT8)) <- op
       , (arg:_)                               <- args =
           cppBOXTYPE (CppBinOp "&" (cppUNBOXED (translateReg arg) "uint16_t") (CppRaw "0xFFu")) "uint8_t"
