@@ -156,6 +156,11 @@ Value Closure::Box(const string s) {
 }
 
 template <>
+Value Closure::Box(char* s) {
+  return s ? make_shared<Closure>(s) : nullptr;
+}
+
+template <>
 Value Closure::Box(const char32_t c) {
   auto boxedValue = make_shared<Closure>(Type::Char);
   boxedValue->Char = c;

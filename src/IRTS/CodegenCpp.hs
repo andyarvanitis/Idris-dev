@@ -33,6 +33,7 @@ import System.Directory
 import qualified Data.Map.Strict as M
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
+import qualified Text.Printf as PF
 
 
 data CompileInfo = CompileInfo { compileInfoApplyCases  :: [Int]
@@ -457,34 +458,13 @@ translateConstant (B64 b)                  = CppWord (CppWord64 b)
 translateConstant c =
   CppError $ "Unimplemented Constant: " ++ show c
 
-
 translateChar :: Char -> String
-translateChar ch = "\\x" ++ fill (showHex (ord ch) "")
-  -- | '\a'   <- ch       = "\\a"
-  -- | '\b'   <- ch       = "\\b"
-  -- | '\f'   <- ch       = "\\f"
-  -- | '\n'   <- ch       = "\\n"
-  -- | '\r'   <- ch       = "\\r"
-  -- | '\t'   <- ch       = "\\t"
-  -- | '\v'   <- ch       = "\\v"
-  -- | '\SO'  <- ch       = "\\u000E"
-  -- | '\DEL' <- ch       = "\\u007F"
-  -- | '\\'   <- ch       = "\\u005C"
-  -- | '\"'   <- ch       = "\\u0022"
-  -- | '\''   <- ch       = "\\u002C"
-  -- | ch `elem` asciiTab = "\\u00" ++ fill (showHex (ord ch) "")
-  -- | otherwise          = [ch]
+translateChar ch
+  | isAscii ch && isAlphaNum ch  = [ch]
+  | ch `elem` [' ','_', ',','.'] = [ch]
+  | otherwise                    = codepoint
   where
-    fill :: String -> String
-    fill s = if length s == 1
-                then '0' : s
-                else s
-  --
-  --   asciiTab =
-  --     ['\NUL', '\SOH', '\STX', '\ETX', '\EOT', '\ENQ', '\ACK', '\BEL',
-  --      '\BS',  '\HT',  '\LF',  '\VT',  '\FF',  '\CR',  '\SO',  '\SI',
-  --      '\DLE', '\DC1', '\DC2', '\DC3', '\DC4', '\NAK', '\SYN', '\ETB',
-  --      '\CAN', '\EM',  '\SUB', '\ESC', '\FS',  '\GS',  '\RS',  '\US']
+    codepoint = "\\U" ++ PF.printf "%.8X" (ord ch)
 
 translateName :: Name -> String
 translateName n = "_idris_" ++ concatMap cchar (showCG n)
@@ -544,7 +524,7 @@ cppFOREIGN _ reg n args ret
       )
 
   | n == "isNull"
-  , [(FPtr, arg)] <- args =
+  , [(_, arg)] <- args =
       CppAssign (
         translateReg reg
       ) (
@@ -558,6 +538,15 @@ cppFOREIGN _ reg n args ret
       ) (
         CppBinOp "==" (translateReg lhs) (translateReg rhs)
       )
+
+  | n == "getenv"
+  , [(_, arg)] <- args =
+      CppAssign (
+        translateReg reg
+      ) (
+        cppBOX $ cppCall "getenv" [cppMeth (cppUNBOXED (translateReg arg) "string") "c_str" []]
+      )
+
   | otherwise =
      CppAssign (
        translateReg reg
@@ -770,6 +759,9 @@ cppOP _ reg op args = CppAssign (translateReg reg) cppOP'
       , (arg:_)                       <- args =
           cppBOXTYPE (CppBinOp "&" (cppUNBOXED (translateReg arg) "long long") (CppRaw "0xFFFFFFFFFFFFFFFFu")) "uint64_t"
 
+      | (LTrunc ITBig ITNative) <- op
+      , (arg:_)                 <- args = cppBOX $ cppStaticCast (cppUNBOXED (translateReg arg) "long long") "int"
+
       | (LLSHR (ITFixed _)) <- op
       , (lhs:rhs:_)           <- args =
           CppBinOp ">>" (translateReg lhs) (translateReg rhs)
@@ -836,21 +828,19 @@ cppOP _ reg op args = CppAssign (translateReg reg) cppOP'
       | LStrLen     <- op
       , (arg:_)     <- args = cppBOXTYPE (strLen (cppUNBOXED (translateReg arg) "string")) "long long int"
       | (LStrInt ITNative)      <- op
-      , (arg:_)                 <- args = cppCall "stoi" [cppUNBOXED (translateReg arg) "string"]
+      , (arg:_)                 <- args = cppBOX $ cppCall "stoi" [cppUNBOXED (translateReg arg) "string"]
       | (LIntStr ITNative)      <- op
       , (arg:_)                 <- args = cppCall "to_string" [translateReg arg]
       | (LSExt ITNative ITBig)  <- op
       , (arg:_)                 <- args = translateReg arg
-      | (LTrunc ITBig ITNative) <- op
-      , (arg:_)                 <- args = cppCall "stoi" [cppUNBOXED (translateReg arg) "string"]
       | (LIntStr ITBig)         <- op
       , (arg:_)                 <- args = cppCall "to_string" [translateReg arg]
       | (LStrInt ITBig)         <- op
-      , (arg:_)                 <- args = cppCall "stoll" [cppUNBOXED (translateReg arg) "string"]
+      , (arg:_)                 <- args = cppBOX $ cppCall "stoll" [cppUNBOXED (translateReg arg) "string"]
       | LFloatStr               <- op
       , (arg:_)                 <- args = cppCall "to_string" [translateReg arg]
       | LStrFloat               <- op
-      , (arg:_)                 <- args = cppCall "stod" [cppUNBOXED (translateReg arg) "string"]
+      , (arg:_)                 <- args = cppBOX $ cppCall "stod" [cppUNBOXED (translateReg arg) "string"]
       | (LIntFloat ITNative)    <- op
       , (arg:_)                 <- args = translateReg arg
       | (LFloatInt ITNative)    <- op
