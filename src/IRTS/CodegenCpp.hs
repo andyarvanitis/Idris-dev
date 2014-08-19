@@ -125,18 +125,16 @@ codegenCpp_all definitions outputType filename includes objs libs flags dbg = do
   let (header, rt) = ("", "")
   
   path       <- (++) <$> getDataDir <*> (pure "/cpprts/")
-  idrRuntime <- readFile $ path ++ "runtime.cpp"
                 
-  let cppout = (  T.pack idrRuntime
-                  `T.append` T.pack (headers includes)
+  let cppout = (  T.pack (headers includes)
+                  `T.append` namespaceBegin
                   `T.append` T.concat (map varDecl opt)
                   `T.append` T.pack "\n\n"
                   `T.append` T.concat (map varDecl cons)
                   `T.append` T.pack "\n\n"
                   `T.append` T.concat (map compileCpp opt)
                   `T.append` T.concat (map compileCpp cons)
-                  `T.append` main
-                  `T.append` invokeMain
+                  `T.append` namespaceEnd
                )
   case outputType of
     Raw -> TIO.writeFile filename cppout
@@ -151,10 +149,13 @@ codegenCpp_all definitions outputType filename includes objs libs flags dbg = do
                     ccStandard ++ " " ++
                     ccDbg dbg ++ " " ++
                     ccFlags ++
+                    " -I " ++ path ++
                     " -I. " ++ objs ++ " -x c++ " ++
                     (if (outputType == Executable) then "" else " -c ") ++
                     " " ++ tmpn ++
                     " " ++ libStandard ++ " " ++
+                    " -L " ++ path ++
+                    " " ++ libRuntime ++ " " ++
                     " " ++ libFlags ++
                     " " ++ incFlags ++
                     " " ++ libs ++
@@ -168,7 +169,7 @@ codegenCpp_all definitions outputType filename includes objs libs flags dbg = do
       headers xs = concatMap (\h -> let header = case h of ('<':_) -> h
                                                            _ -> "\"" ++ h ++ "\"" in                                                      
                                     "#include " ++ header ++ "\n")
-                             (xs ++ []) -- "idris_rts.h", etc..
+                             (xs ++ ["idris_runtime.h"])
 
       debug TRACE = "#define IDRIS_TRACE\n\n"
       debug _ = ""
@@ -179,6 +180,7 @@ codegenCpp_all definitions outputType filename includes objs libs flags dbg = do
 
       ccStandard = "-std=c++11"
       libStandard = "-lc++"
+      libRuntime = "-lidris_cpp_rt"
 
       ccDbg DEBUG = "-g"
       ccDbg TRACE = "-O2"
@@ -243,30 +245,11 @@ codegenCpp_all definitions outputType filename includes objs libs flags dbg = do
       processFunction =
         collectSplitFunctions . (\x -> evalRWS (splitFunction x) () 0)
 
-      main :: T.Text
-      main = 
-        compileCpp $ CppAlloc "main" (Just $ CppFunction ["int argc", "char* argv[]"] mainFun)
+      namespaceBegin :: T.Text
+      namespaceBegin = T.pack "namespace idris {"
 
-      mainFun :: Cpp
-      mainFun =
-        CppSeq [
-                CppAssign (CppIdent "IdrisMain::argc") (CppIdent "argc")
-              , CppAssign (CppIdent "IdrisMain::argv") (CppIdent "argv")
-              , CppAlloc "vm" (Just $ CppNew "make_shared<VirtualMachine>" [])
-              , CppApp (CppIdent "schedule") [CppIdent "vm"]
-              , CppApp (
-                  CppIdent (translateName (sMN 0 "runMain"))
-                ) [CppNum (CppInt 0),CppNum (CppInt 0)]
-              , CppWhile (CppProj cppCALLSTACK "size() > 0") (
-                  CppSeq [ CppAlloc "func" (Just cppPOP)
-                        , CppAlloc "args" (Just cppPOPARGS)
-                        , CppApp (CppIdent "func") [CppIdent "get<0>(args)", CppIdent "get<1>(args)"]
-                        ]
-                )
-              ]
-
-      invokeMain :: T.Text
-      invokeMain = compileCpp CppNoop
+      namespaceEnd :: T.Text
+      namespaceEnd = T.pack "} // namespace idris\n"
 
 optimizeConstructors :: [Cpp] -> ([Cpp], [Cpp])
 optimizeConstructors cpp =
