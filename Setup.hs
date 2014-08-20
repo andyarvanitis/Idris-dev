@@ -190,6 +190,7 @@ idrisBuild _ flags _ local = do
       buildStdLib
       buildRTS
       when (usesLLVM $ configFlags local) buildLLVM
+      buildCPPRTS
    where
       verbosity = S.fromFlag $ S.buildVerbosity flags
 
@@ -204,6 +205,8 @@ idrisBuild _ flags _ local = do
 
       buildLLVM = make verbosity ["-C", "llvm", "build"]
 
+      buildCPPRTS = make verbosity ["-C", "cpprts", "build"]
+
       gmpflag False = []
       gmpflag True = ["GMP=-DIDRIS_GMP"]
 
@@ -216,6 +219,7 @@ idrisInstall verbosity copy pkg local = do
       installStdLib
       installRTS
       when (usesLLVM $ configFlags local) installLLVM
+      installCPPRTS
    where
       target = datadir $ L.absoluteInstallDirs pkg local copy
 
@@ -232,6 +236,11 @@ idrisInstall verbosity copy pkg local = do
          let target' = target </> "llvm"
          putStrLn $ "Installing LLVM library in " ++ target
          makeInstall "llvm" target'
+
+      installCPPRTS = do
+         let target' = target </> "cpprts"
+         putStrLn $ "Installing C++ run time system in " ++ target'
+         makeInstall "cpprts" target'
 
       makeInstall src target =
          make verbosity [ "-C", src, "install" , "TARGET=" ++ target, "IDRIS=" ++ idrisCmd local]

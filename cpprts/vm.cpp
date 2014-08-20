@@ -1,4 +1,5 @@
 
+#include <cassert>
 #include "vm.h"
 
 namespace idris {

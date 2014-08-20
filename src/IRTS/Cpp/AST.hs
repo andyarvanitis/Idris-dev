@@ -399,6 +399,3 @@ cppIsNotNull cpp = CppBinOp "!=" cpp CppNull
 
 cppStaticCast :: Cpp -> String -> Cpp
 cppStaticCast cpp typ = cppCall ("static_cast" ++ "<" ++ typ ++ ">") [cpp]
-
-cppManagedPtr :: String
-cppManagedPtr = "shared_ptr<void>"

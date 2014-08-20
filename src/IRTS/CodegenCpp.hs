@@ -180,7 +180,7 @@ codegenCpp_all definitions outputType filename includes objs libs flags dbg = do
 
       ccStandard = "-std=c++11"
       libStandard = "-lc++"
-      libRuntime = "-lidris_cpp_rt"
+      libRuntime = "-lidris_cpp_rts"
 
       ccDbg DEBUG = "-g"
       ccDbg TRACE = "-O2"
@@ -246,7 +246,7 @@ codegenCpp_all definitions outputType filename includes objs libs flags dbg = do
         collectSplitFunctions . (\x -> evalRWS (splitFunction x) () 0)
 
       namespaceBegin :: T.Text
-      namespaceBegin = T.pack "namespace idris {"
+      namespaceBegin = T.pack "namespace idris {\n"
 
       namespaceEnd :: T.Text
       namespaceEnd = T.pack "} // namespace idris\n"
@@ -461,6 +461,7 @@ cppASSIGN :: CompileInfo -> Reg -> Reg -> Cpp
 cppASSIGN _ r1 r2 = CppAssign (translateReg r1) (translateReg r2)
 
 cppASSIGNCONST :: CompileInfo -> Reg -> Const -> Cpp
+cppASSIGNCONST _ r (BI 0) = CppAssign (translateReg r) (cppBOXTYPE (CppRaw "(int)0") cppBIGINT)
 cppASSIGNCONST _ r c = CppAssign (translateReg r) (cppBOX $ translateConstant c)
 
 cppCALL :: CompileInfo -> Name -> Cpp
@@ -490,7 +491,7 @@ cppFOREIGN _ reg n args ret
       CppAssign (
         translateReg reg
       ) (
-        cppCall "fputStr" [cppUNBOXED (translateReg fh) cppManagedPtr, cppUNBOXED (translateReg str) "string"]
+        cppCall "fputStr" [cppUNBOXED (translateReg fh) cppManagedPtr, cppUNBOXED (translateReg str) cppSTRING]
       )
 
   | n == "fileEOF"
@@ -530,7 +531,7 @@ cppFOREIGN _ reg n args ret
       CppAssign (
         translateReg reg
       ) (
-        cppBOX $ cppCall "getenv" [cppMeth (cppUNBOXED (translateReg arg) "string") "c_str" []]
+        cppBOX $ cppCall "getenv" [cppMeth (cppUNBOXED (translateReg arg) cppSTRING) "c_str" []]
       )
 
   | otherwise =
@@ -554,12 +555,11 @@ cppFOREIGN _ reg n args ret
         --                                 , CppIdent "myoldbase"
         --                                 ]
       generateWrapper (ty, reg) =
-        cppUNBOXED (translateReg reg) (T.unpack . compileCpp $ cType ty)
+        cppUNBOXED (translateReg reg) (T.unpack . compileCpp $ foreignToBoxed ty)
         
       cType :: FType -> Cpp
       cType (FArith (ATInt ITNative))       = CppIdent "int"
       cType (FArith (ATInt ITChar))         = CppIdent "char"
-      cType (FArith (ATInt (ITFixed ity)))  = CppIdent "int"
       cType (FArith (ATInt ITBig))          = CppIdent "long long"
       cType (FArith (ATInt (ITFixed IT8)))  = CppIdent "int8_t"
       cType (FArith (ATInt (ITFixed IT16))) = CppIdent "int16_t"
@@ -568,10 +568,26 @@ cppFOREIGN _ reg n args ret
       cType FString = CppIdent "string"
       cType FUnit = CppIdent "void"
       cType FPtr = CppIdent "void*"
-      cType FManagedPtr = CppIdent cppManagedPtr
+      cType FManagedPtr = CppIdent "shared_ptr<void>"
       cType (FArith ATFloat) = CppIdent "double"
       cType FAny = CppIdent "void*"
       cType (FFunction a b) = CppList [cType a, cType b]
+
+      foreignToBoxed :: FType -> Cpp
+      foreignToBoxed (FArith (ATInt ITNative))       = CppIdent cppINT
+      foreignToBoxed (FArith (ATInt ITChar))         = CppIdent cppCHAR
+      foreignToBoxed (FArith (ATInt ITBig))          = CppIdent cppBIGINT
+      foreignToBoxed (FArith (ATInt (ITFixed IT8)))  = CppIdent (cppWORD 8)
+      foreignToBoxed (FArith (ATInt (ITFixed IT16))) = CppIdent (cppWORD 16)
+      foreignToBoxed (FArith (ATInt (ITFixed IT32))) = CppIdent (cppWORD 32)
+      foreignToBoxed (FArith (ATInt (ITFixed IT64))) = CppIdent (cppWORD 64)
+      foreignToBoxed FString = CppIdent cppSTRING
+      -- foreignToBoxed FUnit = CppIdent "void"
+      foreignToBoxed FPtr = CppIdent cppPTR
+      foreignToBoxed FManagedPtr = CppIdent cppManagedPtr
+      foreignToBoxed (FArith ATFloat) = CppIdent cppFLOAT
+      foreignToBoxed FAny = CppIdent cppPTR
+      -- foreignToBoxed (FFunction a b) = CppList [cType a, cType b]
 
 cppREBASE :: CompileInfo -> Cpp
 cppREBASE _ = CppAssign cppSTACKBASE cppOLDBASE
@@ -673,10 +689,10 @@ cppOP _ reg op args = CppAssign (translateReg reg) cppOP'
     cppOP'
       | LNoOp <- op = translateReg (last args)
 
-      | (LZExt (ITFixed IT8) ITNative)  <- op = cppBOXTYPE (cppUNBOXED (translateReg $ last args) "int") "uint8_t"
-      | (LZExt (ITFixed IT16) ITNative) <- op = cppBOXTYPE (cppUNBOXED (translateReg $ last args) "int") "uint16_t"
-      | (LZExt (ITFixed IT32) ITNative) <- op = cppBOXTYPE (cppUNBOXED (translateReg $ last args) "int") "uint32_t"
-      | (LZExt (ITFixed IT64) ITNative) <- op = cppBOXTYPE (cppUNBOXED (translateReg $ last args) "int") "uint64_t"
+      | (LZExt (ITFixed IT8) ITNative)  <- op = cppBOXTYPE (cppUNBOXED (translateReg $ last args) cppINT) (cppWORD 8)
+      | (LZExt (ITFixed IT16) ITNative) <- op = cppBOXTYPE (cppUNBOXED (translateReg $ last args) cppINT) (cppWORD 16)
+      | (LZExt (ITFixed IT32) ITNative) <- op = cppBOXTYPE (cppUNBOXED (translateReg $ last args) cppINT) (cppWORD 32)
+      | (LZExt (ITFixed IT64) ITNative) <- op = cppBOXTYPE (cppUNBOXED (translateReg $ last args) cppINT) (cppWORD 64)
 
       | (LZExt _ ITBig)        <- op = translateReg (last args)
       | (LPlus (ATInt ITBig))  <- op
@@ -731,26 +747,26 @@ cppOP _ reg op args = CppAssign (translateReg reg) cppOP'
 
       | (LTrunc ITNative (ITFixed IT8)) <- op
       , (arg:_)                               <- args =
-          cppBOXTYPE (CppBinOp "&" (cppUNBOXED (translateReg arg) "int") (CppRaw "0xFFu")) "uint8_t"
+          cppBOXTYPE (CppBinOp "&" (cppUNBOXED (translateReg arg) cppINT) (CppRaw "0xFFu")) (cppWORD 8)
 
       | (LTrunc (ITFixed IT16) (ITFixed IT8)) <- op
       , (arg:_)                               <- args =
-          cppBOXTYPE (CppBinOp "&" (cppUNBOXED (translateReg arg) "uint16_t") (CppRaw "0xFFu")) "uint8_t"
+          cppBOXTYPE (CppBinOp "&" (cppUNBOXED (translateReg arg) (cppWORD 16)) (CppRaw "0xFFu")) (cppWORD 8)
 
       | (LTrunc (ITFixed IT32) (ITFixed IT16)) <- op
       , (arg:_)                                <- args =
-          cppBOXTYPE (CppBinOp "&" (cppUNBOXED (translateReg arg) "uint32_t") (CppRaw "0xFFFFu")) "uint16_t"
+          cppBOXTYPE (CppBinOp "&" (cppUNBOXED (translateReg arg) (cppWORD 32)) (CppRaw "0xFFFFu")) (cppWORD 16)
 
       | (LTrunc (ITFixed IT64) (ITFixed IT32)) <- op
       , (arg:_)                                <- args =
-          cppBOXTYPE (CppBinOp "&" (cppUNBOXED (translateReg arg) "uint64_t") (CppRaw "0xFFFFFFFFu")) "uint32_t"
+          cppBOXTYPE (CppBinOp "&" (cppUNBOXED (translateReg arg) (cppWORD 64)) (CppRaw "0xFFFFFFFFu")) (cppWORD 32)
 
       | (LTrunc ITBig (ITFixed IT64)) <- op
       , (arg:_)                       <- args =
-          cppBOXTYPE (CppBinOp "&" (cppUNBOXED (translateReg arg) "long long") (CppRaw "0xFFFFFFFFFFFFFFFFu")) "uint64_t"
+          cppBOXTYPE (CppBinOp "&" (cppUNBOXED (translateReg arg) cppBIGINT) (CppRaw "0xFFFFFFFFFFFFFFFFu")) (cppWORD 64)
 
       | (LTrunc ITBig ITNative) <- op
-      , (arg:_)                 <- args = cppBOX $ cppStaticCast (cppUNBOXED (translateReg arg) "long long") "int"
+      , (arg:_)                 <- args = cppBOX $ cppStaticCast (cppUNBOXED (translateReg arg) cppBIGINT) "int"
 
       | (LLSHR (ITFixed _)) <- op
       , (lhs:rhs:_)           <- args =
@@ -816,9 +832,9 @@ cppOP _ reg op args = CppAssign (translateReg reg) cppOP'
       | LStrLt      <- op
       , (lhs:rhs:_) <- args = translateBinaryOp "<" lhs rhs
       | LStrLen     <- op
-      , (arg:_)     <- args = cppBOXTYPE (strLen (cppUNBOXED (translateReg arg) "string")) "long long int"
+      , (arg:_)     <- args = cppBOXTYPE (strLen (cppUNBOXED (translateReg arg) cppSTRING)) cppBIGINT
       | (LStrInt ITNative)      <- op
-      , (arg:_)                 <- args = cppBOX $ cppCall "stoi" [cppUNBOXED (translateReg arg) "string"]
+      , (arg:_)                 <- args = cppBOXTYPE (cppCall "stoi" [cppUNBOXED (translateReg arg) cppSTRING]) cppINT
       | (LIntStr ITNative)      <- op
       , (arg:_)                 <- args = cppCall "to_string" [translateReg arg]
       | (LSExt ITNative ITBig)  <- op
@@ -826,11 +842,11 @@ cppOP _ reg op args = CppAssign (translateReg reg) cppOP'
       | (LIntStr ITBig)         <- op
       , (arg:_)                 <- args = cppCall "to_string" [translateReg arg]
       | (LStrInt ITBig)         <- op
-      , (arg:_)                 <- args = cppBOX $ cppCall "stoll" [cppUNBOXED (translateReg arg) "string"]
+      , (arg:_)                 <- args = cppBOXTYPE (cppCall "stoll" [cppUNBOXED (translateReg arg) cppSTRING]) cppBIGINT
       | LFloatStr               <- op
       , (arg:_)                 <- args = cppCall "to_string" [translateReg arg]
       | LStrFloat               <- op
-      , (arg:_)                 <- args = cppBOX $ cppCall "stod" [cppUNBOXED (translateReg arg) "string"]
+      , (arg:_)                 <- args = cppBOXTYPE (cppCall "stod" [cppUNBOXED (translateReg arg) cppSTRING]) cppFLOAT
       | (LIntFloat ITNative)    <- op
       , (arg:_)                 <- args = translateReg arg
       | (LFloatInt ITNative)    <- op
@@ -864,27 +880,27 @@ cppOP _ reg op args = CppAssign (translateReg reg) cppOP'
       , (arg:_)     <- args = cppMeth (translateReg arg) "ceil" []
 
       | LStrCons    <- op
-      , (lhs:rhs:_) <- args = cppBOX $ CppBinOp "+" (cppUNBOXED (translateReg lhs) "string") 
-                                                    (cppUNBOXED (translateReg rhs) "string")
+      , (lhs:rhs:_) <- args = cppBOXTYPE (CppBinOp "+" (cppUNBOXED (translateReg lhs) cppSTRING) 
+                                                       (cppUNBOXED (translateReg rhs) cppSTRING)) cppSTRING
       | LStrHead    <- op
       , (arg:_)     <- args = 
-          let str = cppUNBOXED (translateReg arg) "string" in      
+          let str = cppUNBOXED (translateReg arg) cppSTRING in      
               CppTernary (cppAnd (translateReg arg) (CppPreOp "!" (cppMeth str "empty" [])))
-                         (cppBOXTYPE (cppMeth str "front" []) "char32_t")
+                         (cppBOXTYPE (cppMeth str "front" []) cppCHAR)
                          (CppNull)
 
       | LStrRev     <- op
-      , (arg:_)     <- args = cppCall "reverse" [cppUNBOXED (translateReg arg) "string"]
+      , (arg:_)     <- args = cppCall "reverse" [cppUNBOXED (translateReg arg) cppSTRING]
       | LStrIndex   <- op
       , (lhs:rhs:_) <- args = cppBOXTYPE (
-                                cppMeth (cppUNBOXED (translateReg lhs) "string") "at" [cppUNBOXED (translateReg rhs) "int"]
-                              ) "char32_t"
+                                cppMeth (cppUNBOXED (translateReg lhs) cppSTRING) "at" [cppUNBOXED (translateReg rhs) cppINT]
+                              ) cppCHAR
       | LStrTail    <- op
       , (arg:_)     <- args =
-          let v = cppUNBOXED (translateReg arg) "string" in
-              cppBOX $ CppTernary (cppAnd (translateReg arg) (cppGreaterThan (strLen v) cppOne))
-                                  (cppMeth v "substr" [cppOne, CppBinOp "-" (strLen v) cppOne])
-                                  (CppString "")
+          let v = cppUNBOXED (translateReg arg) cppSTRING in
+              cppBOXTYPE (CppTernary (cppAnd (translateReg arg) (cppGreaterThan (strLen v) cppOne))
+                                     (cppMeth v "substr" [cppOne, CppBinOp "-" (strLen v) cppOne])
+                                     (CppString "")) cppSTRING
       | LReadStr    <- op
       , (arg:_)     <- args = cppBOX $ cppCall "freadStr" [cppUNBOXED (translateReg arg) cppManagedPtr]
 
@@ -960,17 +976,41 @@ cppUNBOXED obj typ = CppApp (CppIdent $ "unbox" ++ "<" ++ typ ++ ">") [obj]
 
 unboxedType :: Cpp -> String
 unboxedType e = case e of 
-                  (CppString _)                       -> "string"
-                  (CppNum (CppFloat _))               -> "double"
-                  (CppNum (CppInteger (CppBigInt _))) -> "long long int"
-                  (CppNum _)                          -> "int"
-                  (CppChar _)                         -> "char32_t"                          
+                  (CppString _)                       -> cppSTRING
+                  (CppNum (CppFloat _))               -> cppFLOAT
+                  (CppNum (CppInteger (CppBigInt _))) -> cppBIGINT
+                  (CppNum _)                          -> cppINT
+                  (CppChar _)                         -> cppCHAR
                   _                                   -> ""
 
 cppBOXTYPE :: Cpp -> String -> Cpp
 cppBOXTYPE obj typ = case typ of
                        "" -> cppCall "box" [obj]
                        _  -> cppCall ("box" ++ "<" ++ typ ++ ">") [obj]
+
+cppINT :: String
+cppINT = "Closure::Type::Int"
+
+cppBIGINT :: String
+cppBIGINT = "Closure::Type::BigInt"
+
+cppFLOAT :: String
+cppFLOAT = "Closure::Type::Float"
+
+cppSTRING :: String
+cppSTRING = "Closure::Type::String"
+
+cppCHAR :: String
+cppCHAR = "Closure::Type::Char"
+
+cppWORD :: Int -> String
+cppWORD n = PF.printf "Closure::Type::Word%d" n
+
+cppManagedPtr :: String
+cppManagedPtr = "Closure::Type::ManagedPtr"
+
+cppPTR :: String
+cppPTR = "Closure::Type::Ptr"
 
 translateBC :: CompileInfo -> BC -> Cpp
 translateBC info bc

@@ -6,22 +6,10 @@
 
 namespace idris {
 
-//---------------------------------------------------------------------------------------
-
-template <typename T>
-Value integral_operator(const Closure::Op op, const Value& lhs, const Value& rhs);
-
 Value find_type_and_apply_operator(const Closure::Op op, const Value& lhs, const Value& rhs = nullptr);
 
-//---------------------------------------------------------------------------------------
+Value to_string(const Value& value);
 
-template <typename T>
-Value general_operator(const Closure::Op op, const Value& lhs, const Value& rhs = nullptr);
-
-template <typename T>
-Value number_operator(const Closure::Op op, const Value& lhs, const Value& rhs);
-
-//---------------------------------------------------------------------------------------
 
 inline Value operator+(const Value& lhs, const Value& rhs) {
   return find_type_and_apply_operator(Closure::Op::Plus, lhs, rhs);
@@ -48,7 +36,7 @@ inline Value operator==(const Value& lhs, const Value& rhs) {
 }
 
 inline Value operator==(const Value& lhs, nullptr_t n) {
-  return box<int>(not lhs);
+  return box<Closure::Type::Int>(not lhs);
 }
 
 inline Value operator<(const Value& lhs, const Value& rhs) {
@@ -78,8 +66,6 @@ inline Value operator<<(const Value& lhs, const Value& rhs) {
 inline Value operator>>(const Value& lhs, const Value& rhs) {
   return find_type_and_apply_operator(Closure::Op::ShiftRight, lhs, rhs);
 }
-
-Value to_string(const Value& value);
 
 } // namespace idris
 

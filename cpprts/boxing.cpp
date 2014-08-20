@@ -1,109 +1,82 @@
 
-#include "boxing.h"
+#include "boxing_base.h"
 
 namespace idris {
 
 using namespace std;  
 
 template <>
-Value Closure::Box(const int i) {
-  auto boxedValue = make_shared<Closure>(Type::Int);
-  boxedValue->Int = i;
-  return boxedValue;
+void init_closure<Closure::Type::Int>(Value& closure, int i) {
+  closure->Int = i;
 }
 
 template <>
-Value Closure::Box(const long long int i) {
-  auto boxedValue = make_shared<Closure>(Type::BigInt);
-  boxedValue->BigInt = i;
-  return boxedValue;
+void init_closure<Closure::Type::BigInt>(Value& closure, long long int i) {
+  closure->BigInt = i;
+}
+
+// template <>
+// void init_closure<Closure::Type::BigInt>(Value& closure, unsigned long int i) {
+//   closure->BigInt = i;
+// }
+
+template <>
+void init_closure<Closure::Type::Float>(Value& closure, double d) {
+  closure->Float = d;
 }
 
 template <>
-Value Closure::Box(const unsigned long int i) {
-  auto boxedValue = make_shared<Closure>(Type::BigInt);
-  boxedValue->BigInt = i;
-  return boxedValue;
-}
-
-template <>
-Value Closure::Box(const double d) {
-  auto boxedValue = make_shared<Closure>(Type::Float);
-  boxedValue->Float = d;
-  return boxedValue;
-}
-
-template <>
-Value Closure::Box(const string& s) {
+Value box<Closure::Type::String>(string s) {
   return make_shared<Closure>(s);
 }
 
 template <>
-Value Closure::Box(const string s) {
-  return make_shared<Closure>(s);
-}
-
-template <>
-Value Closure::Box(char* s) {
+Value box<Closure::Type::String>(char* s) {
   return s ? make_shared<Closure>(s) : nullptr;
 }
 
 template <>
-Value Closure::Box(const char* s) {
+Value box<Closure::Type::String>(const char* s) {
   return s ? make_shared<Closure>(s) : nullptr;
 }
 
 template <>
-Value Closure::Box(const char32_t c) {
-  auto boxedValue = make_shared<Closure>(Type::Char);
-  boxedValue->Char = c;
-  return boxedValue;
+void init_closure<Closure::Type::Char>(Value& closure, char32_t c) {
+  closure->Char = c;
 }
 
 template <>
-Value Closure::Box(const uint8_t w) {
-  auto boxedValue = make_shared<Closure>(Type::Word8);
-  boxedValue->Word8 = w;
-  return boxedValue;
+void init_closure<Closure::Type::Word8>(Value& closure, uint8_t w) {
+  closure->Word8 = w;
 }
 
 template <>
-Value Closure::Box(const uint16_t w) {
-  auto boxedValue = make_shared<Closure>(Type::Word16);
-  boxedValue->Word16 = w;
-  return boxedValue;
+void init_closure<Closure::Type::Word16>(Value& closure, uint16_t w) {
+  closure->Word16 = w;
 }
 
 template <>
-Value Closure::Box(const uint32_t w) {
-  auto boxedValue = make_shared<Closure>(Type::Word32);
-  boxedValue->Word32 = w;
-  return boxedValue;
+void init_closure<Closure::Type::Word32>(Value& closure, uint32_t w) {
+  closure->Word32 = w;
 }
 
 template <>
-Value Closure::Box(const uint64_t w) {
-  auto boxedValue = make_shared<Closure>(Type::Word64);
-  boxedValue->Word64 = w;
-  return boxedValue;
+void init_closure<Closure::Type::Word64>(Value& closure, uint64_t w) {
+  closure->Word64 = w;
 }
 
 template <>
-Value Closure::Box(shared_ptr<void> mp) {
-  auto boxedValue = make_shared<Closure>(Type::ManagedPtr);
-  boxedValue->ManagedPtr = mp;
-  return boxedValue;
+Value box<Closure::Type::ManagedPtr>(shared_ptr<void> mp) {
+  return make_shared<Closure>(mp); 
 }
 
 template <>
-Value Closure::Box(void* p) {
-  auto boxedValue = make_shared<Closure>(Type::Ptr);
-  boxedValue->Ptr = p;
-  return boxedValue;
+void init_closure<Closure::Type::Ptr>(Value& closure, void* p) {
+  closure->Ptr = p;
 }
 
 template <>
-int unbox(const Value& value) {
+int unbox<Closure::Type::Int>(const Value& value) {
   switch (value->type) {
     case Closure::Type::Int:
       return value->Int;
@@ -128,13 +101,13 @@ int unbox(const Value& value) {
 }
 
 template <>
-double unbox(const Value& value) {
+double unbox<Closure::Type::Float>(const Value& value) {
   assert(value->type == Closure::Type::Float);
   return value->Float;
 }
 
 template <>
-string unbox(const Value& value) {
+string unbox<Closure::Type::String>(const Value& value) {
   switch (value->type) {
     case Closure::Type::String:
       return value->String;
@@ -150,8 +123,8 @@ string unbox(const Value& value) {
   }
 }
 
- template <>
- char32_t unbox(const Value& value) {
+template <>
+char32_t unbox<Closure::Type::Char>(const Value& value) {
    switch (value->type) {
     case Closure::Type::Char:
        return value->Char;
@@ -168,7 +141,7 @@ string unbox(const Value& value) {
  }
 
 template <>
-long long int unbox(const Value& value) {
+long long int unbox<Closure::Type::BigInt>(const Value& value) {
   switch (value->type) {
     case Closure::Type::BigInt:
       return value->BigInt;
@@ -194,7 +167,7 @@ long long int unbox(const Value& value) {
 
 
 template <>
-uint8_t unbox(const Value& value) {
+uint8_t unbox<Closure::Type::Word8>(const Value& value) {
   switch (value->type) {
     case Closure::Type::Word8:
       return value->Word8;
@@ -215,7 +188,7 @@ uint8_t unbox(const Value& value) {
 }
 
 template <>
-uint16_t unbox(const Value& value) {
+uint16_t unbox<Closure::Type::Word16>(const Value& value) {
   switch (value->type) {
     case Closure::Type::Word16:
       return value->Word16;
@@ -236,7 +209,7 @@ uint16_t unbox(const Value& value) {
 }
 
 template <>
-uint32_t unbox(const Value& value) {
+uint32_t unbox<Closure::Type::Word32>(const Value& value) {
   switch (value->type) {
     case Closure::Type::Word32:
       return value->Word32;
@@ -257,7 +230,7 @@ uint32_t unbox(const Value& value) {
 }
 
 template <>
-uint64_t unbox(const Value& value) {
+uint64_t unbox<Closure::Type::Word64>(const Value& value) {
   switch (value->type) {  
     case Closure::Type::Word64:
       return value->Word64;
@@ -276,18 +249,5 @@ uint64_t unbox(const Value& value) {
       return 0;
   }
 }
-
-template <>
-shared_ptr<void> unbox(const Value& value) {
-  assert(value->type == Closure::Type::ManagedPtr);
-  return value->ManagedPtr;
-}
-
-template <>
-void* unbox(const Value& value) {
-  assert(value->type == Closure::Type::Ptr);
-  return value->Ptr;
-}
-
 
 } // namespace idris

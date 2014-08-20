@@ -5,7 +5,6 @@
 #include <vector>
 #include <string>
 #include <functional>
-#include "exceptions.h"
 
 namespace idris {
 
@@ -52,9 +51,7 @@ struct Closure {
   Closure(const Type t) : type(t) {}
   Closure(const string& s) : type(Type::String), String(s) {}
   Closure(const shared_ptr<Constructor>& c) : type(Type::Con), Con(c) {}
-
-  template <typename T>
-  static Value Box(T); // { RAISE("unknown box operation type", ""); return nullptr; }
+  Closure(const shared_ptr<void>& mp) : type(Type::ManagedPtr), ManagedPtr(mp) {}
 
   Closure(const Closure& c) : type(c.type) {
     switch (c.type) {
@@ -119,7 +116,9 @@ struct Constructor {
 
 //---------------------------------------------------------------------------------------
 
-
+inline Value MakeCon(const size_t tag, const vector<Value>& args, const Func& function){
+  return make_shared<Closure>(make_shared<Constructor>(tag,args,function));
+}
 
 } // namespace idris
 
