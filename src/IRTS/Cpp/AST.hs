@@ -250,8 +250,10 @@ compileCpp' indent (CppChar c) =
   "'" `T.append` T.pack c `T.append` "'"
 
 compileCpp' indent (CppNum num)
+  | CppInt 0                    <- num = T.pack "(int)0"
   | CppInt i                    <- num = T.pack (show i)
   | CppFloat f                  <- num = T.pack (show f)
+  | CppInteger (CppBigInt 0)     <- num = T.pack "(int)0"
   | CppInteger (CppBigInt i)     <- num = T.pack (show i)
   | CppInteger (CppBigIntExpr e) <- num = compileCpp' indent e
 

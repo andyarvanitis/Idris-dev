@@ -461,7 +461,6 @@ cppASSIGN :: CompileInfo -> Reg -> Reg -> Cpp
 cppASSIGN _ r1 r2 = CppAssign (translateReg r1) (translateReg r2)
 
 cppASSIGNCONST :: CompileInfo -> Reg -> Const -> Cpp
-cppASSIGNCONST _ r (BI 0) = CppAssign (translateReg r) (cppBOXTYPE (CppRaw "(int)0") cppBIGINT)
 cppASSIGNCONST _ r c = CppAssign (translateReg r) (cppBOX $ translateConstant c)
 
 cppCALL :: CompileInfo -> Name -> Cpp
@@ -478,6 +477,15 @@ cppTAILCALL _ n =
 
 cppFOREIGN :: CompileInfo -> Reg -> String -> [(FType, Reg)] -> FType -> Cpp
 cppFOREIGN _ reg n args ret
+  | n == "fileOpen"
+  , [(_, name),(_, mode)] <- args =
+      CppAssign (
+        translateReg reg
+      ) (
+        cppBOXTYPE (cppCall "fileOpen" [cppUNBOXED (translateReg name) cppSTRING,
+                                        cppUNBOXED (translateReg mode) cppSTRING]) cppManagedPtr
+      )
+
   | n == "fileClose"
   , [(_, fh)] <- args =
       CppAssign (
@@ -499,7 +507,7 @@ cppFOREIGN _ reg n args ret
       CppAssign (
         translateReg reg
       ) (
-        cppBOX $ cppCall "fileEOF" [cppUNBOXED (translateReg fh) cppManagedPtr]
+        cppBOXTYPE (cppCall "fileEOF" [cppUNBOXED (translateReg fh) cppManagedPtr]) cppINT
       )
 
   | n == "fileError"
@@ -507,7 +515,7 @@ cppFOREIGN _ reg n args ret
       CppAssign (
         translateReg reg
       ) (
-        cppBOX $ cppCall "fileError" [cppUNBOXED (translateReg fh) cppManagedPtr]
+        cppBOXTYPE (cppCall "fileError" [cppUNBOXED (translateReg fh) cppManagedPtr]) cppINT
       )
 
   | n == "isNull"
@@ -531,7 +539,7 @@ cppFOREIGN _ reg n args ret
       CppAssign (
         translateReg reg
       ) (
-        cppBOX $ cppCall "getenv" [cppMeth (cppUNBOXED (translateReg arg) cppSTRING) "c_str" []]
+        cppBOXTYPE (cppCall "getenv" [cppMeth (cppUNBOXED (translateReg arg) cppSTRING) "c_str" []]) cppSTRING
       )
 
   | otherwise =
@@ -541,7 +549,7 @@ cppFOREIGN _ reg n args ret
        let callexpr = CppFFI n (map generateWrapper args) in
        case ret of
          FUnit -> CppBinOp "," CppNull callexpr
-         _     -> cppBOX callexpr
+         _     -> cppBOXTYPE callexpr (T.unpack . compileCpp $ foreignToBoxed ret)
      )
     where
       generateWrapper :: (FType, Reg) -> Cpp
@@ -766,7 +774,7 @@ cppOP _ reg op args = CppAssign (translateReg reg) cppOP'
           cppBOXTYPE (CppBinOp "&" (cppUNBOXED (translateReg arg) cppBIGINT) (CppRaw "0xFFFFFFFFFFFFFFFFu")) (cppWORD 64)
 
       | (LTrunc ITBig ITNative) <- op
-      , (arg:_)                 <- args = cppBOX $ cppStaticCast (cppUNBOXED (translateReg arg) cppBIGINT) "int"
+      , (arg:_)                 <- args = cppBOXTYPE (cppStaticCast (cppUNBOXED (translateReg arg) cppBIGINT) "int") cppINT
 
       | (LLSHR (ITFixed _)) <- op
       , (lhs:rhs:_)           <- args =
@@ -902,10 +910,10 @@ cppOP _ reg op args = CppAssign (translateReg reg) cppOP'
                                      (cppMeth v "substr" [cppOne, CppBinOp "-" (strLen v) cppOne])
                                      (CppString "")) cppSTRING
       | LReadStr    <- op
-      , (arg:_)     <- args = cppBOX $ cppCall "freadStr" [cppUNBOXED (translateReg arg) cppManagedPtr]
+      , (arg:_)     <- args = cppBOXTYPE (cppCall "freadStr" [cppUNBOXED (translateReg arg) cppManagedPtr]) cppSTRING
 
       | LSystemInfo <- op
-      , (arg:_) <- args = cppBOX $ cppCall "systemInfo"  [translateReg arg]
+      , (arg:_) <- args = cppBOXTYPE (cppCall "systemInfo"  [translateReg arg]) cppSTRING
       | LNullPtr    <- op
       , (_)         <- args = CppNull
       | otherwise = CppError $ "Not implemented: " ++ show op
@@ -981,6 +989,10 @@ unboxedType e = case e of
                   (CppNum (CppInteger (CppBigInt _))) -> cppBIGINT
                   (CppNum _)                          -> cppINT
                   (CppChar _)                         -> cppCHAR
+                  (CppWord (CppWord8 _))              -> cppWORD 8
+                  (CppWord (CppWord16 _))             -> cppWORD 16
+                  (CppWord (CppWord32 _))             -> cppWORD 32
+                  (CppWord (CppWord64 _))             -> cppWORD 64
                   _                                   -> ""
 
 cppBOXTYPE :: Cpp -> String -> Cpp
