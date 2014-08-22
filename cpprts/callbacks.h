@@ -1,15 +1,15 @@
 #ifndef __idris_cpp_runtime_callbacks_h_
 #define __idris_cpp_runtime_callbacks_h_
 
+#include "box.h"
 #include "types.h"
-#include "boxing.h"
 #include "vm.h"
 
 namespace idris {
 
 template <typename RetType, typename... ArgTypes>
 RetType proxy_function(const weak_ptr<VirtualMachine>& vm_weak, 
-                       const weak_ptr<Closure>& con_weak, 
+                       const weak_ptr<BoxedValue>& con_weak, 
                        const IndexType& oldbase,
                        ArgTypes... args) {  
 
@@ -31,10 +31,10 @@ RetType proxy_function(const weak_ptr<VirtualMachine>& vm_weak,
     g_vm->argstack.swap(argstack);
   
     auto res = con;
-    const vector<Closure> arglist = { args... };
+    const vector<BoxedValue> arglist = { args... };
   
     for (auto arg : arglist) {
-      if (res->type == Closure::Type::Con) {
+      if (res->getTypeId() == 'C') {
         g_vm->valstack_top += 1;
         g_vm->valstack[g_vm->valstack_top] = res;
         g_vm->valstack[g_vm->valstack_top + 1] = make_shared<Closure>(arg);

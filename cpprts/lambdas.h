@@ -11,7 +11,7 @@
 #define WRAPPER_VARIANT__(func, nargs) func ## _ ## nargs
 
 #define LAMBDA_WRAPPER(fcon, ...) [](weak_ptr<VirtualMachine> _vm, \
-                                     weak_ptr<Closure> _fcon, \
+                                     weak_ptr<BoxedValue> _fcon, \
                                      const IndexType _oldbase){ \
   return WRAPPER_VARIANT(LAMBDA_WRAPPER, __VA_ARGS__)(__VA_ARGS__); \
 }(g_vm, fcon, oldbase) // call this outer lambda right now

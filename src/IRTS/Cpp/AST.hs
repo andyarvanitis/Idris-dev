@@ -250,10 +250,10 @@ compileCpp' indent (CppChar c) =
   "'" `T.append` T.pack c `T.append` "'"
 
 compileCpp' indent (CppNum num)
-  | CppInt 0                    <- num = T.pack "(int)0"
+  -- | CppInt 0                    <- num = T.pack "(int)0"
   | CppInt i                    <- num = T.pack (show i)
   | CppFloat f                  <- num = T.pack (show f)
-  | CppInteger (CppBigInt 0)     <- num = T.pack "(int)0"
+  -- | CppInteger (CppBigInt 0)     <- num = T.pack "(int)0"
   | CppInteger (CppBigInt i)     <- num = T.pack (show i)
   | CppInteger (CppBigIntExpr e) <- num = compileCpp' indent e
 
@@ -364,7 +364,7 @@ compileCpp' indent (CppWord word)
       fromBigInt n = CppNum . CppInteger . CppBigInt $ fromIntegral n
 
 cppInstanceOf :: Cpp -> String -> Cpp
-cppInstanceOf obj cls = cppAnd obj (cppEq (CppPtrProj obj "type") (CppPreOp "Closure::Type::" (CppIdent cls)))
+cppInstanceOf obj cls = cppAnd obj (cppEq (cppPtrMeth obj "getTypeId" []) (CppChar cls))
 
 cppOr :: Cpp -> Cpp -> Cpp
 cppOr lhs rhs = CppBinOp "||" lhs rhs
@@ -374,6 +374,9 @@ cppAnd lhs rhs = CppBinOp "&&" lhs rhs
 
 cppMeth :: Cpp -> String -> [Cpp] -> Cpp
 cppMeth obj meth args = CppApp (CppProj obj meth) args
+
+cppPtrMeth :: Cpp -> String -> [Cpp] -> Cpp
+cppPtrMeth obj meth args = CppApp (CppPtrProj obj meth) args
 
 cppCall :: String -> [Cpp] -> Cpp
 cppCall fun args = CppApp (CppIdent fun) args

@@ -16,6 +16,9 @@ test_js:
 test_llvm:
 	@perl ./runtest.pl without sugar004 io003 buffer001 --codegen llvm
 
+test_cpp:
+	@perl ./runtest.pl without io003 reg031 --codegen c++
+
 update:
 	/usr/bin/env perl ./runtest.pl all -u
 

@@ -6,9 +6,9 @@
 
 namespace idris {
 
-Value charCode(const Value& value);
-
-Value fromCharCode(const Value& value);
+// Value charCode(const Value& value);
+//
+// Value fromCharCode(const Value& value);
 
 string systemInfo();
 

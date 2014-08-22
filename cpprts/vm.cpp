@@ -25,9 +25,10 @@ void slide(const size_t num_args) {
 }
 
 void project(const Value& value, const IndexType loc, const int arity) {
-  assert(value->type == Closure::Type::Con);
+  assert(value and value->getTypeId() == 'C');
+  const auto & args = unbox<Con>(value).args;
   for (auto i=0; i < arity; i++) {
-    g_vm->valstack[g_vm->valstack_base + i + loc] = value->Con->args[i];
+    g_vm->valstack[g_vm->valstack_base + i + loc] = args[i];
   }
 }
 

@@ -362,9 +362,8 @@ translateDecl info (name@(MN 0 fun), bc)
                translateName name
            ) (Just $ CppFunction ["IndexType oldbase", "IndexType myoldbase"] (
                CppSeq $ map (translateBC info) (fst body) ++ [
-                 CppCond [ ( (translateReg $ caseReg (snd body)) `cppInstanceOf` "Con" `cppAnd` 
-                              (CppPtrProj (CppPtrProj (translateReg $ caseReg (snd body)) "Con") "function")
-                          , CppApp (CppPtrProj (CppPtrProj (translateReg $ caseReg (snd body)) "Con") "function") [cppOLDBASE, cppMYOLDBASE]
+                 CppCond [ ( (translateReg $ caseReg (snd body)) `cppInstanceOf` "C" `cppAnd` fnmember
+                          , CppApp fnmember [cppOLDBASE, cppMYOLDBASE]
                           )
                           , ( CppNoop
                             , CppSeq $ map (translateBC info) (defaultCase (snd body))
@@ -375,6 +374,8 @@ translateDecl info (name@(MN 0 fun), bc)
            )
          ]
   where
+    fnmember = CppProj (cppUNBOX cppCON $ translateReg $ caseReg $ snd body) "function"
+    
     body :: ([BC], [BC])
     body = break isCase bc
 
@@ -461,7 +462,7 @@ cppASSIGN :: CompileInfo -> Reg -> Reg -> Cpp
 cppASSIGN _ r1 r2 = CppAssign (translateReg r1) (translateReg r2)
 
 cppASSIGNCONST :: CompileInfo -> Reg -> Const -> Cpp
-cppASSIGNCONST _ r c = CppAssign (translateReg r) (cppBOX $ translateConstant c)
+cppASSIGNCONST _ r c = CppAssign (translateReg r) (cppBOX' $ translateConstant c)
 
 cppCALL :: CompileInfo -> Name -> Cpp
 cppCALL _ n =
@@ -482,8 +483,8 @@ cppFOREIGN _ reg n args ret
       CppAssign (
         translateReg reg
       ) (
-        cppBOXTYPE (cppCall "fileOpen" [cppUNBOXED (translateReg name) cppSTRING,
-                                        cppUNBOXED (translateReg mode) cppSTRING]) cppManagedPtr
+        cppBOX cppManagedPtr $ cppCall "fileOpen" [cppUNBOX cppSTRING $ translateReg name,
+                                                   cppUNBOX cppSTRING $ translateReg mode]
       )
 
   | n == "fileClose"
@@ -491,7 +492,7 @@ cppFOREIGN _ reg n args ret
       CppAssign (
         translateReg reg
       ) (
-        cppCall "fileClose" [cppUNBOXED (translateReg fh) cppManagedPtr]
+        cppCall "fileClose" [cppUNBOX cppManagedPtr $ translateReg fh]
       )
 
   | n == "fputStr"
@@ -499,7 +500,8 @@ cppFOREIGN _ reg n args ret
       CppAssign (
         translateReg reg
       ) (
-        cppCall "fputStr" [cppUNBOXED (translateReg fh) cppManagedPtr, cppUNBOXED (translateReg str) cppSTRING]
+        cppCall "fputStr" [cppUNBOX cppManagedPtr $ translateReg fh, 
+                           cppUNBOX cppSTRING $ translateReg str]
       )
 
   | n == "fileEOF"
@@ -507,7 +509,7 @@ cppFOREIGN _ reg n args ret
       CppAssign (
         translateReg reg
       ) (
-        cppBOXTYPE (cppCall "fileEOF" [cppUNBOXED (translateReg fh) cppManagedPtr]) cppINT
+        cppBOX cppINT $ cppCall "fileEOF" [cppUNBOX cppManagedPtr $ translateReg fh]
       )
 
   | n == "fileError"
@@ -515,7 +517,7 @@ cppFOREIGN _ reg n args ret
       CppAssign (
         translateReg reg
       ) (
-        cppBOXTYPE (cppCall "fileError" [cppUNBOXED (translateReg fh) cppManagedPtr]) cppINT
+        cppBOX cppINT $ cppCall "fileError" [cppUNBOX cppManagedPtr $ translateReg fh]
       )
 
   | n == "isNull"
@@ -539,7 +541,7 @@ cppFOREIGN _ reg n args ret
       CppAssign (
         translateReg reg
       ) (
-        cppBOXTYPE (cppCall "getenv" [cppMeth (cppUNBOXED (translateReg arg) cppSTRING) "c_str" []]) cppSTRING
+        cppBOX cppSTRING $ cppCall "getenv" [cppMeth (cppUNBOX cppSTRING $ translateReg arg) "c_str" []]
       )
 
   | otherwise =
@@ -549,7 +551,7 @@ cppFOREIGN _ reg n args ret
        let callexpr = CppFFI n (map generateWrapper args) in
        case ret of
          FUnit -> CppBinOp "," CppNull callexpr
-         _     -> cppBOXTYPE callexpr (T.unpack . compileCpp $ foreignToBoxed ret)
+         _     -> cppBOX (T.unpack . compileCpp $ foreignToBoxed ret) $ callexpr
      )
     where
       generateWrapper :: (FType, Reg) -> Cpp
@@ -563,7 +565,7 @@ cppFOREIGN _ reg n args ret
         --                                 , CppIdent "myoldbase"
         --                                 ]
       generateWrapper (ty, reg) =
-        cppUNBOXED (translateReg reg) (T.unpack . compileCpp $ foreignToBoxed ty)
+        cppUNBOX (T.unpack . compileCpp $ foreignToBoxed ty) $ translateReg reg
         
       cType :: FType -> Cpp
       cType (FArith (ATInt ITNative))       = CppIdent "int"
@@ -631,16 +633,27 @@ cppSLIDE _ n = CppApp (CppIdent "slide") [CppNum (CppInt n)]
 cppMKCON :: CompileInfo -> Reg -> Int -> [Reg] -> Cpp
 cppMKCON info r t rs =
   CppAssign (translateReg r) (
-    CppApp (CppIdent "MakeCon") 
-            [ CppNum (CppInt t)
-                  , CppArray (map translateReg rs)
-                  , if t `elem` compileInfoApplyCases info
-                       then CppIdent $ translateName (sMN 0 "APPLY") ++ "_" ++ show t
-                    else if t `elem` compileInfoEvalCases info
-                       then CppIdent $ translateName (sMN 0 "EVAL") ++ "_" ++ show t
-                    else CppNull
-                  ]
-  )
+    cppBOX cppCON $ CppList $ (CppNum (CppInt t) : args rs) ++ func t
+  ) 
+    where
+      args [] = []        
+      args xs = [CppPreOp "Constructor::Args" (CppArray (map translateReg xs))]
+
+      func :: Int -> [Cpp]
+      func n
+        | n `elem` compileInfoApplyCases info = [CppIdent $ translateName (sMN 0 "APPLY") ++ "_" ++ show n]
+        | n `elem` compileInfoEvalCases info  = [CppIdent $ translateName (sMN 0 "EVAL") ++ "_" ++ show n]
+        | otherwise = []
+  
+    -- CppApp (CppIdent "MakeCon")
+    --         [ CppNum (CppInt t)
+    --               , CppArray (map translateReg rs)
+    --               , if t `elem` compileInfoApplyCases info
+    --                    then CppIdent $ translateName (sMN 0 "APPLY") ++ "_" ++ show t
+    --                 else if t `elem` compileInfoEvalCases info
+    --                    then CppIdent $ translateName (sMN 0 "EVAL") ++ "_" ++ show t
+    --                 else CppNull
+    --               ]
 
 cppCASE :: CompileInfo -> Bool -> Reg -> [(Int, [BC])] -> Maybe [BC] -> Cpp
 cppCASE info safe reg cases def =
@@ -657,12 +670,12 @@ cppCASE info safe reg cases def =
 
       cppTAG :: Cpp -> Cpp
       cppTAG cpp =
-        (CppTernary (cpp `cppInstanceOf` "Con") (
+        (CppTernary (cpp `cppInstanceOf` "C") (
           CppPtrProj cpp "tag"
         ) (CppNum (CppInt $ negate 1)))
 
       cppCTAG :: Cpp -> Cpp
-      cppCTAG cpp = CppPtrProj (CppPtrProj cpp "Con") "tag"
+      cppCTAG cpp = CppProj (cppUNBOX cppCON cpp) "tag"
 
 
 cppCONSTCASE :: CompileInfo -> Reg -> [(Const, [BC])] -> Maybe [BC] -> Cpp
@@ -675,14 +688,14 @@ cppCONSTCASE info reg cases def =
       prepBranch bc = CppSeq $ map (translateBC info) bc
 
       unboxedBinOp :: (Cpp -> Cpp -> Cpp) -> Cpp -> Cpp -> Cpp
-      unboxedBinOp f l r = f (cppUNBOXED l (unboxedType r)) r
+      unboxedBinOp f l r = f (cppUNBOX (unboxedType r) l) r
       
 cppPROJECT :: CompileInfo -> Reg -> Int -> Int -> Cpp
 cppPROJECT _ reg loc 0  = CppNoop
 cppPROJECT _ reg loc 1  =
   CppAssign (cppLOC loc) (
-    CppIndex (CppPtrProj (CppPtrProj (translateReg reg) "Con") "args")
-              (CppNum $ CppInt 0)
+    CppIndex (CppProj (cppUNBOX cppCON $ translateReg reg) "args")
+             (CppNum $ CppInt 0)
   )
 cppPROJECT _ reg loc ar =
   CppApp (CppIdent "project") [ translateReg reg
@@ -691,237 +704,222 @@ cppPROJECT _ reg loc ar =
                               ]
 
 cppOP :: CompileInfo -> Reg -> PrimFn -> [Reg] -> Cpp
-cppOP _ reg op args = CppAssign (translateReg reg) cppOP'
+cppOP info reg op args = CppAssign (translateReg reg) cppOP'
   where
     cppOP' :: Cpp
     cppOP'
       | LNoOp <- op = translateReg (last args)
 
-      | (LZExt (ITFixed IT8) ITNative)  <- op = cppBOXTYPE (cppUNBOXED (translateReg $ last args) cppINT) (cppWORD 8)
-      | (LZExt (ITFixed IT16) ITNative) <- op = cppBOXTYPE (cppUNBOXED (translateReg $ last args) cppINT) (cppWORD 16)
-      | (LZExt (ITFixed IT32) ITNative) <- op = cppBOXTYPE (cppUNBOXED (translateReg $ last args) cppINT) (cppWORD 32)
-      | (LZExt (ITFixed IT64) ITNative) <- op = cppBOXTYPE (cppUNBOXED (translateReg $ last args) cppINT) (cppWORD 64)
+      | (LZExt (ITFixed IT8) ITNative)  <- op = cppBOX (cppWORD 8)  $ cppUNBOX cppINT $ (translateReg (last args))
+      | (LZExt (ITFixed IT16) ITNative) <- op = cppBOX (cppWORD 16) $ cppUNBOX cppINT $ (translateReg (last args))
+      | (LZExt (ITFixed IT32) ITNative) <- op = cppBOX (cppWORD 32) $ cppUNBOX cppINT $ (translateReg (last args))
+      | (LZExt (ITFixed IT64) ITNative) <- op = cppBOX (cppWORD 64) $ cppUNBOX cppINT $ (translateReg (last args))
 
       | (LZExt _ ITBig)        <- op = translateReg (last args)
-      | (LPlus (ATInt ITBig))  <- op
-      , (lhs:rhs:_)            <- args = translateBinaryOp "+" lhs rhs
-      | (LMinus (ATInt ITBig)) <- op
-      , (lhs:rhs:_)            <- args = translateBinaryOp "-" lhs rhs
-      | (LTimes (ATInt ITBig)) <- op
-      , (lhs:rhs:_)            <- args = translateBinaryOp "*" lhs rhs
-      | (LSDiv (ATInt ITBig))  <- op
-      , (lhs:rhs:_)            <- args = translateBinaryOp "/" lhs rhs
-      | (LSRem (ATInt ITBig))  <- op
-      , (lhs:rhs:_)            <- args = translateBinaryOp "%" lhs rhs
-      | (LEq (ATInt ITBig))    <- op
-      , (lhs:rhs:_)            <- args = translateBinaryOp "==" lhs rhs
-      | (LSLt (ATInt ITBig))   <- op
-      , (lhs:rhs:_)            <- args = translateBinaryOp "<" lhs rhs
-      | (LSLe (ATInt ITBig))   <- op
-      , (lhs:rhs:_)            <- args = translateBinaryOp "<=" lhs rhs
-      | (LSGt (ATInt ITBig))   <- op
-      , (lhs:rhs:_)            <- args = translateBinaryOp ">" lhs rhs
-      | (LSGe (ATInt ITBig))   <- op
-      , (lhs:rhs:_)            <- args = translateBinaryOp ">=" lhs rhs
 
-      | (LPlus ATFloat)  <- op
-      , (lhs:rhs:_)      <- args = translateBinaryOp "+" lhs rhs
-      | (LMinus ATFloat) <- op
-      , (lhs:rhs:_)      <- args = translateBinaryOp "-" lhs rhs
-      | (LTimes ATFloat) <- op
-      , (lhs:rhs:_)      <- args = translateBinaryOp "*" lhs rhs
-      | (LSDiv ATFloat)  <- op
-      , (lhs:rhs:_)      <- args = translateBinaryOp "/" lhs rhs
-      | (LEq ATFloat)    <- op
-      , (lhs:rhs:_)      <- args = translateBinaryOp "==" lhs rhs
-      | (LSLt ATFloat)   <- op
-      , (lhs:rhs:_)      <- args = translateBinaryOp "<" lhs rhs
-      | (LSLe ATFloat)   <- op
-      , (lhs:rhs:_)      <- args = translateBinaryOp "<=" lhs rhs
-      | (LSGt ATFloat)   <- op
-      , (lhs:rhs:_)      <- args = translateBinaryOp ">" lhs rhs
-      | (LSGe ATFloat)   <- op
-      , (lhs:rhs:_)      <- args = translateBinaryOp ">=" lhs rhs
-
-      | (LPlus (ATInt ITChar)) <- op
-      , (lhs:rhs:_)            <- args =
-          cppCall "fromCharCode" [
-            CppBinOp "+" (
-              cppCall "charCode" [translateReg lhs]
-            ) (
-              cppCall "charCode" [translateReg rhs]
-            )
-          ]
+      | (LPlus ty)  <- op
+      , (lhs:rhs:_) <- args = cppBOX (cppAType ty) $ CppBinOp "+" (cppUNBOX (cppAType ty) $ translateReg lhs)
+                                                                  (cppUNBOX (cppAType ty) $ translateReg rhs)
+      | (LMinus ty)  <- op
+      , (lhs:rhs:_)  <- args = cppBOX (cppAType ty) $ CppBinOp "-" (cppUNBOX (cppAType ty) $ translateReg lhs)
+                                                                   (cppUNBOX (cppAType ty) $ translateReg rhs)
+      | (LTimes ty)  <- op
+      , (lhs:rhs:_)  <- args = cppBOX (cppAType ty) $ CppBinOp "*" (cppUNBOX (cppAType ty) $ translateReg lhs)
+                                                                   (cppUNBOX (cppAType ty) $ translateReg rhs)
+      | (LSDiv ty)  <- op
+      , (lhs:rhs:_) <- args = cppBOX (cppAType ty) $ CppBinOp "/" (cppUNBOX (cppAType ty) $ translateReg lhs)
+                                                                  (cppUNBOX (cppAType ty) $ translateReg rhs)
+      | (LSRem ty)  <- op
+      , (lhs:rhs:_) <- args = cppBOX (cppAType ty) $ CppBinOp "%" (cppUNBOX (cppAType ty) $ translateReg lhs)
+                                                                  (cppUNBOX (cppAType ty) $ translateReg rhs)
+      | (LEq ty)    <- op
+      , (lhs:rhs:_) <- args = cppBOX cppBOOL $ CppBinOp "==" (cppUNBOX (cppAType ty) $ translateReg lhs)
+                                                             (cppUNBOX (cppAType ty) $ translateReg rhs)
+      | (LSLt ty)   <- op
+      , (lhs:rhs:_) <- args = cppBOX cppBOOL $ CppBinOp "<"  (cppUNBOX (cppAType ty) $ translateReg lhs)
+                                                             (cppUNBOX (cppAType ty) $ translateReg rhs)
+      | (LSLe ty)   <- op
+      , (lhs:rhs:_) <- args = cppBOX cppBOOL $ CppBinOp "<=" (cppUNBOX (cppAType ty) $ translateReg lhs)
+                                                             (cppUNBOX (cppAType ty) $ translateReg rhs)
+      | (LSGt ty)   <- op
+      , (lhs:rhs:_) <- args = cppBOX cppBOOL $ CppBinOp ">"  (cppUNBOX (cppAType ty) $ translateReg lhs)
+                                                             (cppUNBOX (cppAType ty) $ translateReg rhs)
+      | (LSGe ty)   <- op
+      , (lhs:rhs:_) <- args = cppBOX cppBOOL $ CppBinOp ">=" (cppUNBOX (cppAType ty) $ translateReg lhs)
+                                                             (cppUNBOX (cppAType ty) $ translateReg rhs)
+      -- | (LPlus (ATInt ITChar)) <- op
+      -- , (lhs:rhs:_)            <- args =
+      --     cppCall "fromCharCode" [
+      --       CppBinOp "+" (
+      --         cppCall "charCode" [translateReg lhs]
+      --       ) (
+      --         cppCall "charCode" [translateReg rhs]
+      --       )
+      --     ]
 
       | (LTrunc ITNative (ITFixed IT8)) <- op
       , (arg:_)                               <- args =
-          cppBOXTYPE (CppBinOp "&" (cppUNBOXED (translateReg arg) cppINT) (CppRaw "0xFFu")) (cppWORD 8)
+          cppBOX (cppWORD 8) $ CppBinOp "&" (cppUNBOX cppINT $ translateReg arg) (CppRaw "0xFFu")
 
       | (LTrunc (ITFixed IT16) (ITFixed IT8)) <- op
       , (arg:_)                               <- args =
-          cppBOXTYPE (CppBinOp "&" (cppUNBOXED (translateReg arg) (cppWORD 16)) (CppRaw "0xFFu")) (cppWORD 8)
+          cppBOX (cppWORD 8) $ CppBinOp "&" (cppUNBOX (cppWORD 16) $ translateReg arg) (CppRaw "0xFFu")
 
       | (LTrunc (ITFixed IT32) (ITFixed IT16)) <- op
       , (arg:_)                                <- args =
-          cppBOXTYPE (CppBinOp "&" (cppUNBOXED (translateReg arg) (cppWORD 32)) (CppRaw "0xFFFFu")) (cppWORD 16)
+          cppBOX (cppWORD 16) $ CppBinOp "&" (cppUNBOX (cppWORD 32) $ translateReg arg) (CppRaw "0xFFFFu")
 
       | (LTrunc (ITFixed IT64) (ITFixed IT32)) <- op
       , (arg:_)                                <- args =
-          cppBOXTYPE (CppBinOp "&" (cppUNBOXED (translateReg arg) (cppWORD 64)) (CppRaw "0xFFFFFFFFu")) (cppWORD 32)
+          cppBOX (cppWORD 32) $ CppBinOp "&" (cppUNBOX (cppWORD 64) $ translateReg arg) (CppRaw "0xFFFFFFFFu")
 
       | (LTrunc ITBig (ITFixed IT64)) <- op
       , (arg:_)                       <- args =
-          cppBOXTYPE (CppBinOp "&" (cppUNBOXED (translateReg arg) cppBIGINT) (CppRaw "0xFFFFFFFFFFFFFFFFu")) (cppWORD 64)
+          cppBOX (cppWORD 64) $ CppBinOp "&" (cppUNBOX cppBIGINT $ translateReg arg) (CppRaw "0xFFFFFFFFFFFFFFFFu")
 
       | (LTrunc ITBig ITNative) <- op
-      , (arg:_)                 <- args = cppBOXTYPE (cppStaticCast (cppUNBOXED (translateReg arg) cppBIGINT) "int") cppINT
+      , (arg:_)                 <- args = cppBOX cppINT $ cppStaticCast (cppUNBOX cppBIGINT $ translateReg arg) "int"
 
-      | (LLSHR (ITFixed _)) <- op
+
+      | (LLSHR ty@(ITFixed _)) <- op
       , (lhs:rhs:_)           <- args =
-          CppBinOp ">>" (translateReg lhs) (translateReg rhs)
+          cppBOX (cppAType (ATInt ty)) $ cppOP info reg (LASHR ty) args
 
-      | (LLt (ITFixed _)) <- op
-      , (lhs:rhs:_)         <- args =
-          CppBinOp "<" (translateReg lhs) (translateReg rhs)
+      | (LLt ty@(ITFixed _)) <- op
+      , (lhs:rhs:_)         <- args = cppOP info reg (LSLt (ATInt ty)) args
 
-      | (LLe (ITFixed _)) <- op
-      , (lhs:rhs:_)         <- args =
-          CppBinOp "<=" (translateReg lhs) (translateReg rhs)
+      | (LLe ty@(ITFixed _)) <- op
+      , (lhs:rhs:_)         <- args = cppOP info reg (LSLe (ATInt ty)) args
 
-      | (LGt (ITFixed _)) <- op
-      , (lhs:rhs:_)         <- args =
-          CppBinOp ">" (translateReg lhs) (translateReg rhs)
+      | (LGt ty@(ITFixed _)) <- op
+      , (lhs:rhs:_)         <- args = cppOP info reg (LSGt (ATInt ty)) args
 
-      | (LGe (ITFixed _)) <- op
-      , (lhs:rhs:_)         <- args =
-          CppBinOp ">=" (translateReg lhs) (translateReg rhs)
+      | (LGe ty@(ITFixed _)) <- op
+      , (lhs:rhs:_)         <- args = cppOP info reg (LSGe (ATInt ty)) args
 
-      | (LUDiv (ITFixed _)) <- op
-      , (lhs:rhs:_)           <- args =
-          CppBinOp "/" (translateReg lhs) (translateReg rhs)
+      | (LUDiv ty@(ITFixed _)) <- op
+      , (lhs:rhs:_)           <- args = cppOP info reg (LSDiv (ATInt ty)) args
 
-      | (LPlus _)   <- op
-      , (lhs:rhs:_) <- args = translateBinaryOp "+" lhs rhs
-      | (LMinus _)  <- op
-      , (lhs:rhs:_) <- args = translateBinaryOp "-" lhs rhs
-      | (LTimes _)  <- op
-      , (lhs:rhs:_) <- args = translateBinaryOp "*" lhs rhs
-      | (LSDiv _)   <- op
-      , (lhs:rhs:_) <- args = translateBinaryOp "/" lhs rhs
-      | (LSRem _)   <- op
-      , (lhs:rhs:_) <- args = translateBinaryOp "%" lhs rhs
-      | (LEq _)     <- op
-      , (lhs:rhs:_) <- args = translateBinaryOp "==" lhs rhs
-      | (LSLt _)    <- op
-      , (lhs:rhs:_) <- args = translateBinaryOp "<" lhs rhs
-      | (LSLe _)    <- op
-      , (lhs:rhs:_) <- args = translateBinaryOp "<=" lhs rhs
-      | (LSGt _)    <- op
-      , (lhs:rhs:_) <- args = translateBinaryOp ">" lhs rhs
-      | (LSGe _)    <- op
-      , (lhs:rhs:_) <- args = translateBinaryOp ">=" lhs rhs
-      | (LAnd _)    <- op
-      , (lhs:rhs:_) <- args = translateBinaryOp "&" lhs rhs
-      | (LOr _)     <- op
-      , (lhs:rhs:_) <- args = translateBinaryOp "|" lhs rhs
-      | (LXOr _)    <- op
-      , (lhs:rhs:_) <- args = translateBinaryOp "^" lhs rhs
-      | (LSHL _)    <- op
-      , (lhs:rhs:_) <- args = translateBinaryOp "<<" rhs lhs
-      | (LASHR _)   <- op
-      , (lhs:rhs:_) <- args = translateBinaryOp ">>" rhs lhs
-      | (LCompl _)  <- op
-      , (arg:_)     <- args = CppPreOp "~" (translateReg arg)
+      | (LAnd ty)    <- op
+      , (lhs:rhs:_) <- args = cppBOX (cppAType (ATInt ty)) $ CppBinOp "&" (cppUNBOX (cppAType (ATInt ty)) $ translateReg lhs)
+                                                                          (cppUNBOX (cppAType (ATInt ty)) $ translateReg rhs)
+      | (LOr ty)     <- op
+      , (lhs:rhs:_) <- args = cppBOX (cppAType (ATInt ty)) $ CppBinOp "|" (cppUNBOX (cppAType (ATInt ty)) $ translateReg lhs)
+                                                                          (cppUNBOX (cppAType (ATInt ty)) $ translateReg rhs)
+      | (LXOr ty)    <- op
+      , (lhs:rhs:_) <- args = cppBOX (cppAType (ATInt ty)) $ CppBinOp "^" (cppUNBOX (cppAType (ATInt ty)) $ translateReg lhs)
+                                                                          (cppUNBOX (cppAType (ATInt ty)) $ translateReg rhs)
+      | (LSHL ty)    <- op
+      , (lhs:rhs:_) <- args = cppBOX (cppAType (ATInt ty)) $ CppBinOp "<<" (cppUNBOX (cppAType (ATInt ty)) $ translateReg lhs)
+                                                                           (cppAsIntegral $ translateReg rhs)
+      | (LASHR ty)   <- op
+      , (lhs:rhs:_) <- args = cppBOX (cppAType (ATInt ty)) $ CppBinOp ">>" (cppUNBOX (cppAType (ATInt ty)) $ translateReg lhs)
+                                                                           (cppAsIntegral $ translateReg rhs)
+      | (LCompl ty)  <- op
+      , (arg:_)     <- args = cppBOX (cppAType (ATInt ty)) $ CppPreOp "~" (cppUNBOX (cppAType (ATInt ty)) $ translateReg arg)
 
       | LStrConcat  <- op
-      , (lhs:rhs:_) <- args = translateBinaryOp "+" lhs rhs
+      , (lhs:rhs:_) <- args = cppBOX cppSTRING $ CppBinOp "+" (cppUNBOX cppSTRING $ translateReg lhs)
+                                                              (cppUNBOX cppSTRING $ translateReg rhs)
       | LStrEq      <- op
-      , (lhs:rhs:_) <- args = translateBinaryOp "==" lhs rhs
+      , (lhs:rhs:_) <- args = cppBOX cppBOOL $ CppBinOp "==" (cppUNBOX cppSTRING $ translateReg lhs)
+                                                             (cppUNBOX cppSTRING $ translateReg rhs)
       | LStrLt      <- op
-      , (lhs:rhs:_) <- args = translateBinaryOp "<" lhs rhs
+      , (lhs:rhs:_) <- args = cppBOX cppBOOL $ CppBinOp "<"  (cppUNBOX cppSTRING $ translateReg lhs)
+                                                             (cppUNBOX cppSTRING $ translateReg rhs)
       | LStrLen     <- op
-      , (arg:_)     <- args = cppBOXTYPE (strLen (cppUNBOXED (translateReg arg) cppSTRING)) cppBIGINT
+      , (arg:_)     <- args = cppBOX cppBIGINT $ strLen (cppUNBOX cppSTRING $ translateReg arg)
+
       | (LStrInt ITNative)      <- op
-      , (arg:_)                 <- args = cppBOXTYPE (cppCall "stoi" [cppUNBOXED (translateReg arg) cppSTRING]) cppINT
+      , (arg:_)                 <- args = cppBOX cppINT $ cppCall "stoi" [cppUNBOX cppSTRING $ translateReg arg]
+
       | (LIntStr ITNative)      <- op
-      , (arg:_)                 <- args = cppCall "to_string" [translateReg arg]
+      , (arg:_)                 <- args = cppBOX cppSTRING $ cppAsString $ translateReg arg
+
       | (LSExt ITNative ITBig)  <- op
-      , (arg:_)                 <- args = translateReg arg
+      , (arg:_)                 <- args = cppBOX cppBIGINT $ cppUNBOX cppINT $ translateReg arg
+
       | (LIntStr ITBig)         <- op
-      , (arg:_)                 <- args = cppCall "to_string" [translateReg arg]
+      , (arg:_)                 <- args = cppBOX cppSTRING $ cppAsString $ translateReg arg
+
       | (LStrInt ITBig)         <- op
-      , (arg:_)                 <- args = cppBOXTYPE (cppCall "stoll" [cppUNBOXED (translateReg arg) cppSTRING]) cppBIGINT
+      , (arg:_)                 <- args = cppBOX cppBIGINT $ cppCall "stoll" [cppUNBOX cppSTRING $ translateReg arg]
+
       | LFloatStr               <- op
-      , (arg:_)                 <- args = cppCall "to_string" [translateReg arg]
+      , (arg:_)                 <- args = cppBOX cppSTRING $ cppAsString $ translateReg arg
+
       | LStrFloat               <- op
-      , (arg:_)                 <- args = cppBOXTYPE (cppCall "stod" [cppUNBOXED (translateReg arg) cppSTRING]) cppFLOAT
+      , (arg:_)                 <- args = cppBOX cppFLOAT $ cppCall "stod" [cppUNBOX cppSTRING $ translateReg arg]
+
       | (LIntFloat ITNative)    <- op
-      , (arg:_)                 <- args = translateReg arg
+      , (arg:_)                 <- args = cppBOX cppFLOAT $ cppUNBOX cppINT $ translateReg arg
+
       | (LFloatInt ITNative)    <- op
-      , (arg:_)                 <- args = translateReg arg
+      , (arg:_)                 <- args = cppBOX cppINT $ cppUNBOX cppFLOAT $ translateReg arg
+
       | (LChInt ITNative)       <- op
-      , (arg:_)                 <- args = cppCall "charCode" [translateReg arg]
+      , (arg:_)                 <- args = cppBOX cppINT $ cppUNBOX cppCHAR $ translateReg arg
+
       | (LIntCh ITNative)       <- op
-      , (arg:_)                 <- args = cppCall "fromCharCode" [translateReg arg]
+      , (arg:_)                 <- args = cppBOX cppCHAR $ cppUNBOX cppINT $ translateReg arg
 
       | LFExp       <- op
-      , (arg:_)     <- args = cppCall "exp" [translateReg arg]
+      , (arg:_)     <- args = cppBOX cppFLOAT $ cppCall "exp" [cppUNBOX cppFLOAT $ translateReg arg]
       | LFLog       <- op
-      , (arg:_)     <- args = cppCall "log" [translateReg arg]
+      , (arg:_)     <- args = cppBOX cppFLOAT $ cppCall "log" [cppUNBOX cppFLOAT $ translateReg arg]
       | LFSin       <- op
-      , (arg:_)     <- args = cppCall "sin" [translateReg arg]
+      , (arg:_)     <- args = cppBOX cppFLOAT $ cppCall "sin" [cppUNBOX cppFLOAT $ translateReg arg]
       | LFCos       <- op
-      , (arg:_)     <- args = cppCall "cos" [translateReg arg]
+      , (arg:_)     <- args = cppBOX cppFLOAT $ cppCall "cos" [cppUNBOX cppFLOAT $ translateReg arg]
       | LFTan       <- op
-      , (arg:_)     <- args = cppCall "tan" [translateReg arg]
+      , (arg:_)     <- args = cppBOX cppFLOAT $ cppCall "tan" [cppUNBOX cppFLOAT $ translateReg arg]
       | LFASin      <- op
-      , (arg:_)     <- args = cppCall "asin" [translateReg arg]
+      , (arg:_)     <- args = cppBOX cppFLOAT $ cppCall "asin" [cppUNBOX cppFLOAT $ translateReg arg]
       | LFACos      <- op
-      , (arg:_)     <- args = cppCall "acos" [translateReg arg]
+      , (arg:_)     <- args = cppBOX cppFLOAT $ cppCall "acos" [cppUNBOX cppFLOAT $ translateReg arg]
       | LFATan      <- op
-      , (arg:_)     <- args = cppCall "atan" [translateReg arg]
+      , (arg:_)     <- args = cppBOX cppFLOAT $ cppCall "atan" [cppUNBOX cppFLOAT $ translateReg arg]
       | LFSqrt      <- op
-      , (arg:_)     <- args = cppCall "sqrt" [translateReg arg]
+      , (arg:_)     <- args = cppBOX cppFLOAT $ cppCall "sqrt" [cppUNBOX cppFLOAT $ translateReg arg]
       | LFFloor     <- op
-      , (arg:_)     <- args = cppMeth (translateReg arg) "floor" []
+      , (arg:_)     <- args = cppBOX cppFLOAT $ cppCall "floor" [cppUNBOX cppFLOAT $ translateReg arg]
       | LFCeil      <- op
-      , (arg:_)     <- args = cppMeth (translateReg arg) "ceil" []
+      , (arg:_)     <- args = cppBOX cppFLOAT $ cppCall "ceil" [cppUNBOX cppFLOAT $ translateReg arg]
 
       | LStrCons    <- op
-      , (lhs:rhs:_) <- args = cppBOXTYPE (CppBinOp "+" (cppUNBOXED (translateReg lhs) cppSTRING) 
-                                                       (cppUNBOXED (translateReg rhs) cppSTRING)) cppSTRING
+      , (lhs:rhs:_) <- args = cppBOX cppSTRING $ CppBinOp "+" (cppAsString $ translateReg lhs)
+                                                              (cppUNBOX cppSTRING $ translateReg rhs)
       | LStrHead    <- op
       , (arg:_)     <- args = 
-          let str = cppUNBOXED (translateReg arg) cppSTRING in      
+          let str = cppUNBOX cppSTRING $ translateReg arg in      
               CppTernary (cppAnd (translateReg arg) (CppPreOp "!" (cppMeth str "empty" [])))
-                         (cppBOXTYPE (cppMeth str "front" []) cppCHAR)
+                         (cppBOX cppCHAR $ cppMeth str "front" [])
                          (CppNull)
 
       | LStrRev     <- op
-      , (arg:_)     <- args = cppCall "reverse" [cppUNBOXED (translateReg arg) cppSTRING]
+      , (arg:_)     <- args = cppBOX cppSTRING $ cppCall "reverse" [cppUNBOX cppSTRING $ translateReg arg]
+
       | LStrIndex   <- op
-      , (lhs:rhs:_) <- args = cppBOXTYPE (
-                                cppMeth (cppUNBOXED (translateReg lhs) cppSTRING) "at" [cppUNBOXED (translateReg rhs) cppINT]
-                              ) cppCHAR
+      , (lhs:rhs:_) <- args = cppBOX cppCHAR $
+                                cppMeth (cppUNBOX cppSTRING $ translateReg lhs) "at" [cppAsIntegral $ translateReg rhs]
       | LStrTail    <- op
       , (arg:_)     <- args =
-          let v = cppUNBOXED (translateReg arg) cppSTRING in
-              cppBOXTYPE (CppTernary (cppAnd (translateReg arg) (cppGreaterThan (strLen v) cppOne))
-                                     (cppMeth v "substr" [cppOne, CppBinOp "-" (strLen v) cppOne])
-                                     (CppString "")) cppSTRING
+          let str = cppUNBOX cppSTRING $ translateReg arg in
+              CppTernary (cppAnd (translateReg arg) (cppGreaterThan (strLen str) cppOne))
+                         (cppBOX cppSTRING $ cppMeth str "substr" [cppOne, CppBinOp "-" (strLen str) cppOne])
+                         (CppNull)
+
       | LReadStr    <- op
-      , (arg:_)     <- args = cppBOXTYPE (cppCall "freadStr" [cppUNBOXED (translateReg arg) cppManagedPtr]) cppSTRING
+      , (arg:_)     <- args = cppBOX cppSTRING $ cppCall "freadStr" [cppUNBOX cppManagedPtr $ translateReg arg]
 
       | LSystemInfo <- op
-      , (arg:_) <- args = cppBOXTYPE (cppCall "systemInfo"  [translateReg arg]) cppSTRING
+      , (arg:_) <- args = cppBOX cppSTRING $ cppCall "systemInfo"  [translateReg arg]
+
       | LNullPtr    <- op
       , (_)         <- args = CppNull
+
       | otherwise = CppError $ "Not implemented: " ++ show op
         where
-          translateBinaryOp :: String -> Reg -> Reg -> Cpp
-          translateBinaryOp op lhs rhs =
-            CppBinOp op (translateReg lhs) (translateReg rhs)
-
           invokeMeth :: Reg -> String -> [Reg] -> Cpp
           invokeMeth obj meth args =
             CppApp (CppProj (translateReg obj) meth) $ map translateReg args
@@ -976,11 +974,11 @@ cppPOP = CppBinOp ";" (cppMeth cppCALLSTACK "top" []) (cppMeth cppCALLSTACK "pop
 cppPOPARGS :: Cpp
 cppPOPARGS = CppBinOp ";" (cppMeth cppARGSTACK "top" []) (cppMeth cppARGSTACK "pop" [])
 
-cppBOX :: Cpp -> Cpp
-cppBOX obj = cppBOXTYPE obj (unboxedType obj)
+cppBOX' :: Cpp -> Cpp
+cppBOX' obj = cppBOX (unboxedType obj) obj
 
-cppUNBOXED :: Cpp -> String -> Cpp
-cppUNBOXED obj typ = CppApp (CppIdent $ "unbox" ++ "<" ++ typ ++ ">") [obj]
+cppUNBOX :: String -> Cpp -> Cpp
+cppUNBOX typ obj = CppApp (CppIdent $ "unbox" ++ "<" ++ typ ++ ">") [obj]
 
 unboxedType :: Cpp -> String
 unboxedType e = case e of 
@@ -995,34 +993,57 @@ unboxedType e = case e of
                   (CppWord (CppWord64 _))             -> cppWORD 64
                   _                                   -> ""
 
-cppBOXTYPE :: Cpp -> String -> Cpp
-cppBOXTYPE obj typ = case typ of
+cppBOX :: String -> Cpp -> Cpp
+cppBOX typ obj = case typ of
                        "" -> cppCall "box" [obj]
                        _  -> cppCall ("box" ++ "<" ++ typ ++ ">") [obj]
 
+cppAsString :: Cpp -> Cpp
+cppAsString obj = cppPtrMeth obj "asString" []
+
+cppAsIntegral :: Cpp -> Cpp
+cppAsIntegral obj = cppPtrMeth obj "asIntegral" []
+
 cppINT :: String
-cppINT = "Closure::Type::Int"
+cppINT = "Int"
 
 cppBIGINT :: String
-cppBIGINT = "Closure::Type::BigInt"
+cppBIGINT = "BigInt"
 
 cppFLOAT :: String
-cppFLOAT = "Closure::Type::Float"
+cppFLOAT = "Float"
 
 cppSTRING :: String
-cppSTRING = "Closure::Type::String"
+cppSTRING = "String"
 
 cppCHAR :: String
-cppCHAR = "Closure::Type::Char"
+cppCHAR = "Char"
 
 cppWORD :: Int -> String
-cppWORD n = PF.printf "Closure::Type::Word%d" n
+cppWORD n = PF.printf "Word%d" n
 
 cppManagedPtr :: String
-cppManagedPtr = "Closure::Type::ManagedPtr"
+cppManagedPtr = "ManagedPtr"
 
 cppPTR :: String
-cppPTR = "Closure::Type::Ptr"
+cppPTR = "Ptr"
+
+cppCON :: String
+cppCON = "Con"
+
+cppBOOL :: String
+cppBOOL = cppINT
+
+cppAType :: ArithTy -> String
+cppAType (ATInt ITNative)       = cppINT
+cppAType (ATInt ITBig)          = cppBIGINT
+cppAType (ATInt ITChar)         = cppCHAR
+cppAType (ATFloat)              = cppFLOAT
+cppAType (ATInt (ITFixed IT8))  = cppWORD 8 
+cppAType (ATInt (ITFixed IT16)) = cppWORD 8 
+cppAType (ATInt (ITFixed IT32)) = cppWORD 8 
+cppAType (ATInt (ITFixed IT64)) = cppWORD 8 
+cppAType (ty)                   = "UNKNOWN TYPE: " ++ show ty
 
 translateBC :: CompileInfo -> BC -> Cpp
 translateBC info bc

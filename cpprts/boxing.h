@@ -1,7 +1,11 @@
 #ifndef __idris_cpp_runtime_boxing_h_
 #define __idris_cpp_runtime_boxing_h_
 
-#include "boxing_base.h"
+#include <memory>
+#include <vector>
+#include <string>
+#include <functional>
+#include <sstream>
 
 namespace idris {
 
