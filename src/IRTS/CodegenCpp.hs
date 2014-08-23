@@ -120,8 +120,8 @@ codegenCpp_all definitions outputType filename includes objs libs flags dbg = do
   let info = initCompileInfo bytecode
   let cpp = concatMap (translateDecl info) bytecode
   let full = concatMap processFunction cpp
-  let code = deadCodeElim full
-  let (cons, opt) = optimizeConstructors code
+  --let code = deadCodeElim full
+  let (cons, opt) = optimizeConstructors full
   let (header, rt) = ("", "")
   
   path       <- (++) <$> getDataDir <*> (pure "/cpprts/")
@@ -362,8 +362,8 @@ translateDecl info (name@(MN 0 fun), bc)
                translateName name
            ) (Just $ CppFunction ["IndexType oldbase", "IndexType myoldbase"] (
                CppSeq $ map (translateBC info) (fst body) ++ [
-                 CppCond [ ( (translateReg $ caseReg (snd body)) `cppInstanceOf` "C" `cppAnd` fnmember
-                          , CppApp fnmember [cppOLDBASE, cppMYOLDBASE]
+                 CppCond [ ( (translateReg $ caseReg (snd body)) `cppInstanceOf` "C" `cppAnd` func
+                          , CppApp func [cppOLDBASE, cppMYOLDBASE]
                           )
                           , ( CppNoop
                             , CppSeq $ map (translateBC info) (defaultCase (snd body))
@@ -374,7 +374,7 @@ translateDecl info (name@(MN 0 fun), bc)
            )
          ]
   where
-    fnmember = CppProj (cppUNBOX cppCON $ translateReg $ caseReg $ snd body) "function"
+    func = CppProj (cppUNBOX cppCON $ translateReg $ caseReg $ snd body) "function"
     
     body :: ([BC], [BC])
     body = break isCase bc
@@ -449,9 +449,7 @@ translateChar :: Char -> String
 translateChar ch
   | isAscii ch && isAlphaNum ch  = [ch]
   | ch `elem` [' ','_', ',','.'] = [ch]
-  | otherwise                    = codepoint
-  where
-    codepoint = "\\U" ++ PF.printf "%.8X" (ord ch)
+  | otherwise                    = cppCodepoint (ord ch)
 
 translateName :: Name -> String
 translateName n = "_idris_" ++ concatMap cchar (showCG n)
@@ -525,7 +523,7 @@ cppFOREIGN _ reg n args ret
       CppAssign (
         translateReg reg
       ) (
-        CppBinOp "==" (translateReg arg) CppNull
+        cppBOX cppBOOL $ CppBinOp "==" (translateReg arg) CppNull
       )
 
   | n == "idris_eqPtr"
@@ -894,7 +892,8 @@ cppOP info reg op args = CppAssign (translateReg reg) cppOP'
           let str = cppUNBOX cppSTRING $ translateReg arg in      
               CppTernary (cppAnd (translateReg arg) (CppPreOp "!" (cppMeth str "empty" [])))
                          (cppBOX cppCHAR $ cppMeth str "front" [])
-                         (CppNull)
+                         CppNull
+                         --(cppBOX cppCHAR $ CppChar (cppCodepoint 0))
 
       | LStrRev     <- op
       , (arg:_)     <- args = cppBOX cppSTRING $ cppCall "reverse" [cppUNBOX cppSTRING $ translateReg arg]
@@ -907,7 +906,7 @@ cppOP info reg op args = CppAssign (translateReg reg) cppOP'
           let str = cppUNBOX cppSTRING $ translateReg arg in
               CppTernary (cppAnd (translateReg arg) (cppGreaterThan (strLen str) cppOne))
                          (cppBOX cppSTRING $ cppMeth str "substr" [cppOne, CppBinOp "-" (strLen str) cppOne])
-                         (CppNull)
+                         (cppBOX cppSTRING $ CppString "")
 
       | LReadStr    <- op
       , (arg:_)     <- args = cppBOX cppSTRING $ cppCall "freadStr" [cppUNBOX cppManagedPtr $ translateReg arg]
@@ -1044,6 +1043,11 @@ cppAType (ATInt (ITFixed IT16)) = cppWORD 8
 cppAType (ATInt (ITFixed IT32)) = cppWORD 8 
 cppAType (ATInt (ITFixed IT64)) = cppWORD 8 
 cppAType (ty)                   = "UNKNOWN TYPE: " ++ show ty
+
+
+cppCodepoint :: Int -> String
+cppCodepoint c = PF.printf "\\U%.8X" c
+
 
 translateBC :: CompileInfo -> BC -> Cpp
 translateBC info bc

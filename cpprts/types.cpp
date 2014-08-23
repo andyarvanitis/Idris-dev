@@ -87,7 +87,7 @@ template struct BoxType<'c', char32_t>;
 
 template <>
 string BoxType<'c', char32_t>::asString() {
-  return interpreted_string(value);
+  return interpreted_string(static_cast<char>(value)); // TODO: utf8
 }
 
 template <>

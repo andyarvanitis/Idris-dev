@@ -79,11 +79,16 @@ struct Constructor {
   Args args;
   Func function;
 
-  Constructor(const size_t tag, const Args& args = Args(), const Func& function = nullptr) 
+  Constructor(const size_t tag, const Args& args = Args(), const Func& function = nullptr)
     : tag(tag)
     , args(args)
     , function(function)
     {}
+
+  Constructor(const size_t tag, const Func& function)
+    : Constructor(tag, Args(), function)
+    {}
+
 };
 
 } // namespace idris
