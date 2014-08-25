@@ -702,18 +702,14 @@ cppPROJECT _ reg loc ar =
                               ]
 
 cppOP :: CompileInfo -> Reg -> PrimFn -> [Reg] -> Cpp
-cppOP info reg op args = CppAssign (translateReg reg) cppOP'
+cppOP _ reg oper args = CppAssign (translateReg reg) (cppOP' oper)
   where
-    cppOP' :: Cpp
-    cppOP'
+    cppOP' :: PrimFn -> Cpp
+    cppOP' op
       | LNoOp <- op = translateReg (last args)
 
-      | (LZExt (ITFixed IT8) ITNative)  <- op = cppBOX (cppWORD 8)  $ cppUNBOX cppINT $ (translateReg (last args))
-      | (LZExt (ITFixed IT16) ITNative) <- op = cppBOX (cppWORD 16) $ cppUNBOX cppINT $ (translateReg (last args))
-      | (LZExt (ITFixed IT32) ITNative) <- op = cppBOX (cppWORD 32) $ cppUNBOX cppINT $ (translateReg (last args))
-      | (LZExt (ITFixed IT64) ITNative) <- op = cppBOX (cppWORD 64) $ cppUNBOX cppINT $ (translateReg (last args))
-
-      | (LZExt _ ITBig)        <- op = translateReg (last args)
+      | (LZExt ty@(ITFixed _) ITNative) <- op = cppBOX cppINT    $ cppUNBOX (cppAType (ATInt ty)) $ translateReg (last args)
+      | (LZExt ty@(ITFixed _) ITBig)    <- op = cppBOX cppBIGINT $ cppUNBOX (cppAType (ATInt ty)) $ translateReg (last args)
 
       | (LPlus ty)  <- op
       , (lhs:rhs:_) <- args = cppBOX (cppAType ty) $ CppBinOp "+" (cppUNBOX (cppAType ty) $ translateReg lhs)
@@ -780,23 +776,22 @@ cppOP info reg op args = CppAssign (translateReg reg) cppOP'
 
 
       | (LLSHR ty@(ITFixed _)) <- op
-      , (lhs:rhs:_)           <- args =
-          cppBOX (cppAType (ATInt ty)) $ cppOP info reg (LASHR ty) args
+      , (lhs:rhs:_)           <- args = cppOP' (LASHR ty)
 
       | (LLt ty@(ITFixed _)) <- op
-      , (lhs:rhs:_)         <- args = cppOP info reg (LSLt (ATInt ty)) args
+      , (lhs:rhs:_)         <- args = cppOP' (LSLt (ATInt ty))
 
       | (LLe ty@(ITFixed _)) <- op
-      , (lhs:rhs:_)         <- args = cppOP info reg (LSLe (ATInt ty)) args
+      , (lhs:rhs:_)         <- args = cppOP' (LSLe (ATInt ty))
 
       | (LGt ty@(ITFixed _)) <- op
-      , (lhs:rhs:_)         <- args = cppOP info reg (LSGt (ATInt ty)) args
+      , (lhs:rhs:_)         <- args = cppOP' (LSGt (ATInt ty))
 
       | (LGe ty@(ITFixed _)) <- op
-      , (lhs:rhs:_)         <- args = cppOP info reg (LSGe (ATInt ty)) args
+      , (lhs:rhs:_)         <- args = cppOP' (LSGe (ATInt ty))
 
       | (LUDiv ty@(ITFixed _)) <- op
-      , (lhs:rhs:_)           <- args = cppOP info reg (LSDiv (ATInt ty)) args
+      , (lhs:rhs:_)           <- args = cppOP' (LSDiv (ATInt ty))
 
       | (LAnd ty)    <- op
       , (lhs:rhs:_) <- args = cppBOX (cppAType (ATInt ty)) $ CppBinOp "&" (cppUNBOX (cppAType (ATInt ty)) $ translateReg lhs)
@@ -891,7 +886,7 @@ cppOP info reg op args = CppAssign (translateReg reg) cppOP'
       , (arg:_)     <- args = 
           let str = cppUNBOX cppSTRING $ translateReg arg in      
               CppTernary (cppAnd (translateReg arg) (CppPreOp "!" (cppMeth str "empty" [])))
-                         (cppBOX cppCHAR $ cppMeth str "front" [])
+                         (cppBOX cppCHAR $ cppCall "utf8_head" [str])
                          CppNull
                          --(cppBOX cppCHAR $ CppChar (cppCodepoint 0))
 
@@ -899,13 +894,13 @@ cppOP info reg op args = CppAssign (translateReg reg) cppOP'
       , (arg:_)     <- args = cppBOX cppSTRING $ cppCall "reverse" [cppUNBOX cppSTRING $ translateReg arg]
 
       | LStrIndex   <- op
-      , (lhs:rhs:_) <- args = cppBOX cppCHAR $
-                                cppMeth (cppUNBOX cppSTRING $ translateReg lhs) "at" [cppAsIntegral $ translateReg rhs]
+      , (lhs:rhs:_) <- args = cppBOX cppCHAR $ cppCall "char32_from_utf8_string" [cppUNBOX cppSTRING $ translateReg lhs, 
+                                                                                  cppAsIntegral $ translateReg rhs]
       | LStrTail    <- op
       , (arg:_)     <- args =
           let str = cppUNBOX cppSTRING $ translateReg arg in
               CppTernary (cppAnd (translateReg arg) (cppGreaterThan (strLen str) cppOne))
-                         (cppBOX cppSTRING $ cppMeth str "substr" [cppOne, CppBinOp "-" (strLen str) cppOne])
+                         (cppBOX cppSTRING $ cppCall "utf8_tail" [str])
                          (cppBOX cppSTRING $ CppString "")
 
       | LReadStr    <- op
@@ -1038,10 +1033,10 @@ cppAType (ATInt ITNative)       = cppINT
 cppAType (ATInt ITBig)          = cppBIGINT
 cppAType (ATInt ITChar)         = cppCHAR
 cppAType (ATFloat)              = cppFLOAT
-cppAType (ATInt (ITFixed IT8))  = cppWORD 8 
-cppAType (ATInt (ITFixed IT16)) = cppWORD 8 
-cppAType (ATInt (ITFixed IT32)) = cppWORD 8 
-cppAType (ATInt (ITFixed IT64)) = cppWORD 8 
+cppAType (ATInt (ITFixed IT8))  = cppWORD 8
+cppAType (ATInt (ITFixed IT16)) = cppWORD 16
+cppAType (ATInt (ITFixed IT32)) = cppWORD 32
+cppAType (ATInt (ITFixed IT64)) = cppWORD 64
 cppAType (ty)                   = "UNKNOWN TYPE: " ++ show ty
 
 

@@ -10,6 +10,12 @@ namespace idris {
 //
 // Value fromCharCode(const Value& value);
 
+char32_t utf8_head(const string&);
+
+string utf8_tail(const string&);
+
+char32_t char32_from_utf8_string(const string&, size_t index);
+
 string systemInfo();
 
 template <typename T>
@@ -18,6 +24,8 @@ inline T reverse(const T& container) {
   std::reverse(rcontainer.begin(),rcontainer.end());
   return rcontainer;
 }
+
+string utf8_reverse(const string&);
 
 } // namespace idris
 

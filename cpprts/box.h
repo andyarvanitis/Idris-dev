@@ -51,7 +51,7 @@ using Value = shared_ptr<BoxedValue>;
 //---------------------------------------------------------------------------------------
 
 template <typename T, typename... ArgTypes>
-auto box(ArgTypes&&... args) -> Value {
+inline auto box(ArgTypes&&... args) -> Value {
   return make_shared<T>(forward<ArgTypes>(args)...);
 }
 

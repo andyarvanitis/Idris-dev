@@ -1,6 +1,7 @@
 
 #include <sstream>
 #include <iostream>
+#include <codecvt>
 #include "box.h"
 
 namespace idris {
@@ -86,8 +87,10 @@ long long int BoxType<'s', string>::asIntegral() {
 template struct BoxType<'c', char32_t>;
 
 template <>
-string BoxType<'c', char32_t>::asString() {
-  return interpreted_string(static_cast<char>(value)); // TODO: utf8
+string BoxType<'c', char32_t>::asString() {\
+  std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t> utf32conv;
+  string utf8 = utf32conv.to_bytes(value);  
+  return interpreted_string(utf8);
 }
 
 template <>
