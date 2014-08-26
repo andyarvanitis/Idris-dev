@@ -52,7 +52,7 @@ using Value = shared_ptr<BoxedValue>;
 
 template <typename T, typename... ArgTypes>
 inline auto box(ArgTypes&&... args) -> Value {
-  return make_shared<T>(forward<ArgTypes>(args)...);
+  return static_pointer_cast<BoxedValue>(make_shared<T>(forward<ArgTypes>(args)...));
 }
 
 //---------------------------------------------------------------------------------------
@@ -75,20 +75,23 @@ struct Constructor {
   
   using Args = vector<Value>;
   
-  size_t tag;
-  Args args;
-  Func function;
+  const size_t tag;
+  const Func function;
+  const Args args;
 
-  Constructor(const size_t tag, const Args& args = Args(), const Func& function = nullptr)
+  template <typename ... ArgTypes>
+  Constructor(const size_t tag, const Func& function, ArgTypes&&... args)
     : tag(tag)
-    , args(args)
     , function(function)
+    , args({args...})
     {}
 
-  Constructor(const size_t tag, const Func& function)
-    : Constructor(tag, Args(), function)
+  template <typename ... ArgTypes>
+  Constructor(const size_t tag, ArgTypes&&... args)
+    : tag(tag)
+    , function(nullptr)
+    , args({args...})
     {}
-
 };
 
 } // namespace idris

@@ -631,27 +631,17 @@ cppSLIDE _ n = CppApp (CppIdent "slide") [CppNum (CppInt n)]
 cppMKCON :: CompileInfo -> Reg -> Int -> [Reg] -> Cpp
 cppMKCON info r t rs =
   CppAssign (translateReg r) (
-    cppBOX cppCON $ CppList $ (CppNum (CppInt t) : args rs) ++ func t
+    cppBOX cppCON $ CppList $ (CppNum (CppInt t) : func t) ++ args rs
   ) 
     where
       args [] = []        
-      args xs = [CppPreOp "Constructor::Args" (CppArray (map translateReg xs))]
+      args xs = [CppList (map translateReg xs)]
 
       func :: Int -> [Cpp]
       func n
         | n `elem` compileInfoApplyCases info = [CppIdent $ translateName (sMN 0 "APPLY") ++ "_" ++ show n]
         | n `elem` compileInfoEvalCases info  = [CppIdent $ translateName (sMN 0 "EVAL") ++ "_" ++ show n]
         | otherwise = []
-  
-    -- CppApp (CppIdent "MakeCon")
-    --         [ CppNum (CppInt t)
-    --               , CppArray (map translateReg rs)
-    --               , if t `elem` compileInfoApplyCases info
-    --                    then CppIdent $ translateName (sMN 0 "APPLY") ++ "_" ++ show t
-    --                 else if t `elem` compileInfoEvalCases info
-    --                    then CppIdent $ translateName (sMN 0 "EVAL") ++ "_" ++ show t
-    --                 else CppNull
-    --               ]
 
 cppCASE :: CompileInfo -> Bool -> Reg -> [(Int, [BC])] -> Maybe [BC] -> Cpp
 cppCASE info safe reg cases def =

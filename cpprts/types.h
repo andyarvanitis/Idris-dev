@@ -49,12 +49,12 @@ extern template struct BoxType<'C', Constructor>;
 
 template <>
 inline auto box<String, const char*>(const char * && s) -> Value {
-  return s ? make_shared<String>(string(s)) : nullptr;
+  return s ? static_pointer_cast<BoxedValue>(make_shared<String>(string(s))) : nullptr;
 }
 
 template <>
 inline auto box<String, char*>(char * && s) -> Value {
-  return s ? make_shared<String>(string(s)) : nullptr;
+  return s ? static_pointer_cast<BoxedValue>(make_shared<String>(string(s))) : nullptr;
 }
 
 } // namespace idris
