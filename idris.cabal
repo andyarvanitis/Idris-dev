@@ -60,15 +60,13 @@ Data-files:            idrisdoc/styles.css
                        rts/idris_stdfgn.h
                        rts/libtest.c
                        cpprts/idris_runtime.h
-                       cpprts/boxing.h
-                       cpprts/boxing_base.h
+                       cpprts/box.h
                        cpprts/callbacks.h
                        cpprts/exceptions.h
                        cpprts/io.h
                        cpprts/lambdas.h
                        cpprts/main.h
                        cpprts/mem.h
-                       cpprts/operators.h
                        cpprts/types.h
                        cpprts/utility.h
                        cpprts/vm.h

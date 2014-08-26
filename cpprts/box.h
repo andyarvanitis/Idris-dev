@@ -22,7 +22,7 @@ struct BoxedValue {
 //---------------------------------------------------------------------------------------
 
 template <char N, typename T>
-struct BoxType : public BoxedValue {
+struct TypedBoxedValue : public BoxedValue {
   
   using type = T;
   
@@ -30,10 +30,8 @@ struct BoxType : public BoxedValue {
   
   const T value;
   
-  // BoxType(T v) : value(v) {}
-
   template <typename... ArgTypes>
-  BoxType(ArgTypes&&... args) : value(forward<ArgTypes>(args)...) {}
+  TypedBoxedValue(ArgTypes&&... args) : value(forward<ArgTypes>(args)...) {}
   
   inline auto get() -> T { return value; }
   

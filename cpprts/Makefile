@@ -1,6 +1,5 @@
 include ../config.mk
 
-# OBJS = boxing.o io.o main.o operators.o utility.o vm.o
 OBJS = io.o main.o types.o utility.o vm.o
 HDRS = box.h exceptions.h io.h main.h mem.h types.h utility.h vm.h
 CPPFLAGS:=-fPIC $(CPPFLAGS:)
