@@ -402,5 +402,5 @@ cppIsNull cpp = CppBinOp "==" cpp CppNull
 cppIsNotNull :: Cpp -> Cpp
 cppIsNotNull cpp = CppBinOp "!=" cpp CppNull
 
-cppStaticCast :: Cpp -> String -> Cpp
-cppStaticCast cpp typ = cppCall ("static_cast" ++ "<" ++ typ ++ ">") [cpp]
+cppStaticCast :: String -> Cpp -> Cpp
+cppStaticCast typ cpp = cppCall ("static_cast" ++ "<" ++ typ ++ ">") [cpp]

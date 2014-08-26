@@ -708,8 +708,8 @@ cppOP _ reg oper args = CppAssign (translateReg reg) (cppOP' oper)
     cppOP' op
       | LNoOp <- op = translateReg (last args)
 
-      | (LZExt ty@(ITFixed _) ITNative) <- op = cppBOX cppINT    $ cppUNBOX (cppAType (ATInt ty)) $ translateReg (last args)
-      | (LZExt ty@(ITFixed _) ITBig)    <- op = cppBOX cppBIGINT $ cppUNBOX (cppAType (ATInt ty)) $ translateReg (last args)
+      | (LZExt ty ITNative) <- op = cppBOX cppINT    $ cppUNBOX (cppAType (ATInt ty)) $ translateReg (last args)
+      | (LZExt ty ITBig)    <- op = cppBOX cppBIGINT $ cppUNBOX (cppAType (ATInt ty)) $ translateReg (last args)
 
       | (LPlus ty)  <- op
       , (lhs:rhs:_) <- args = cppBOX (cppAType ty) $ CppBinOp "+" (cppUNBOX (cppAType ty) $ translateReg lhs)
@@ -772,7 +772,7 @@ cppOP _ reg oper args = CppAssign (translateReg reg) (cppOP' oper)
           cppBOX (cppWORD 64) $ CppBinOp "&" (cppUNBOX cppBIGINT $ translateReg arg) (CppRaw "0xFFFFFFFFFFFFFFFFu")
 
       | (LTrunc ITBig ITNative) <- op
-      , (arg:_)                 <- args = cppBOX cppINT $ cppStaticCast (cppUNBOX cppBIGINT $ translateReg arg) "int"
+      , (arg:_)                 <- args = cppBOX cppINT $ cppStaticCast (cppINT ++ "::type") (cppUNBOX cppBIGINT $ translateReg arg)
 
 
       | (LLSHR ty@(ITFixed _)) <- op
@@ -821,7 +821,7 @@ cppOP _ reg oper args = CppAssign (translateReg reg) (cppOP' oper)
       , (lhs:rhs:_) <- args = cppBOX cppBOOL $ CppBinOp "<"  (cppUNBOX cppSTRING $ translateReg lhs)
                                                              (cppUNBOX cppSTRING $ translateReg rhs)
       | LStrLen     <- op
-      , (arg:_)     <- args = cppBOX cppBIGINT $ strLen (cppUNBOX cppSTRING $ translateReg arg)
+      , (arg:_)     <- args = cppBOX cppINT $ cppStaticCast (cppINT ++ "::type") (strLen (cppUNBOX cppSTRING $ translateReg arg)) -- TODO: int size 64?
 
       | (LStrInt ITNative)      <- op
       , (arg:_)                 <- args = cppBOX cppINT $ cppCall "stoi" [cppUNBOX cppSTRING $ translateReg arg]
