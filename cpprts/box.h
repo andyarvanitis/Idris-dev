@@ -13,9 +13,9 @@ using namespace std;
 //---------------------------------------------------------------------------------------
 
 struct BoxedValue {  
-  virtual char getTypeId() = 0;
-  virtual string asString() = 0;
-  virtual long long int asIntegral() = 0;
+  virtual char getTypeId() const = 0;
+  virtual string asString() const = 0;
+  virtual long long int asIntegral() const = 0;
   virtual ~BoxedValue() {}
 };
 
@@ -26,17 +26,17 @@ struct TypedBoxedValue : public BoxedValue {
   
   using type = T;
   
-  char getTypeId() { return N; }
+  char getTypeId() const { return N; }
   
   const T value;
   
   template <typename... ArgTypes>
   TypedBoxedValue(ArgTypes&&... args) : value(forward<ArgTypes>(args)...) {}
   
-  inline auto get() -> T { return value; }
+  inline auto get() const -> const T& { return value; }
   
-  string asString();  
-  long long int asIntegral();
+  string asString() const;
+  long long int asIntegral() const;
   
 };
 

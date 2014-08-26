@@ -26,12 +26,12 @@ void cannot_convert(char src, string tgt) {
 template struct TypedBoxedValue<'i', int>;
 
 template <>
-string TypedBoxedValue<'i', int>::asString() {
+string TypedBoxedValue<'i', int>::asString() const {
   return to_string(value);
 }
 
 template <>
-long long int TypedBoxedValue<'i', int>::asIntegral() {
+long long int TypedBoxedValue<'i', int>::asIntegral() const {
   return value;
 }
 
@@ -41,12 +41,12 @@ long long int TypedBoxedValue<'i', int>::asIntegral() {
 template struct TypedBoxedValue<'b', long long>;
 
 template <>
-string TypedBoxedValue<'b', long long>::asString() {
+string TypedBoxedValue<'b', long long>::asString() const {
   return interpreted_string(value);
 }
 
 template <>
-long long int TypedBoxedValue<'b', long long>::asIntegral() {
+long long int TypedBoxedValue<'b', long long>::asIntegral() const {
   return value;
 }
 
@@ -56,12 +56,12 @@ long long int TypedBoxedValue<'b', long long>::asIntegral() {
 template struct TypedBoxedValue<'f', double>;
 
 template <>
-string TypedBoxedValue<'f', double>::asString() {
+string TypedBoxedValue<'f', double>::asString() const {
   return to_string(value);
 }
 
 template <>
-long long int TypedBoxedValue<'f', double>::asIntegral() {
+long long int TypedBoxedValue<'f', double>::asIntegral() const {
   return value;
 }
 
@@ -71,12 +71,12 @@ long long int TypedBoxedValue<'f', double>::asIntegral() {
 template struct TypedBoxedValue<'s', string>;
 
 template <>
-string TypedBoxedValue<'s', string>::asString() {
+string TypedBoxedValue<'s', string>::asString() const {
   return value;
 }
 
 template <>
-long long int TypedBoxedValue<'s', string>::asIntegral() {
+long long int TypedBoxedValue<'s', string>::asIntegral() const {
   cannot_convert(this->getTypeId(), "integer");
   return 0;
 }
@@ -87,14 +87,14 @@ long long int TypedBoxedValue<'s', string>::asIntegral() {
 template struct TypedBoxedValue<'c', char32_t>;
 
 template <>
-string TypedBoxedValue<'c', char32_t>::asString() {\
+string TypedBoxedValue<'c', char32_t>::asString() const {\
   std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t> utf32conv;
   string utf8 = utf32conv.to_bytes(value);  
   return interpreted_string(utf8);
 }
 
 template <>
-long long int TypedBoxedValue<'c', char32_t>::asIntegral() {
+long long int TypedBoxedValue<'c', char32_t>::asIntegral() const {
   return value;
 }
 
@@ -104,12 +104,12 @@ long long int TypedBoxedValue<'c', char32_t>::asIntegral() {
 template struct TypedBoxedValue<'1', uint8_t>;
 
 template <>
-string TypedBoxedValue<'1', uint8_t>::asString() {
+string TypedBoxedValue<'1', uint8_t>::asString() const {
   return to_string(value);
 }
 
 template <>
-long long int TypedBoxedValue<'1', uint8_t>::asIntegral() {
+long long int TypedBoxedValue<'1', uint8_t>::asIntegral() const {
   return value;
 }
 
@@ -119,12 +119,12 @@ long long int TypedBoxedValue<'1', uint8_t>::asIntegral() {
 template struct TypedBoxedValue<'2', uint16_t>;
 
 template <>
-string TypedBoxedValue<'2', uint16_t>::asString() {
+string TypedBoxedValue<'2', uint16_t>::asString() const {
   return to_string(value);
 }
 
 template <>
-long long int TypedBoxedValue<'2', uint16_t>::asIntegral() {
+long long int TypedBoxedValue<'2', uint16_t>::asIntegral() const {
   return value;
 }
 
@@ -134,12 +134,12 @@ long long int TypedBoxedValue<'2', uint16_t>::asIntegral() {
 template struct TypedBoxedValue<'4', uint32_t>;
 
 template <>
-string TypedBoxedValue<'4', uint32_t>::asString() {
+string TypedBoxedValue<'4', uint32_t>::asString() const {
   return to_string(value);
 }
 
 template <>
-long long int TypedBoxedValue<'4', uint32_t>::asIntegral() {
+long long int TypedBoxedValue<'4', uint32_t>::asIntegral() const {
   return value;
 }
 
@@ -149,12 +149,12 @@ long long int TypedBoxedValue<'4', uint32_t>::asIntegral() {
 template struct TypedBoxedValue<'8', uint64_t>;
 
 template <>
-string TypedBoxedValue<'8', uint64_t>::asString() {
+string TypedBoxedValue<'8', uint64_t>::asString() const {
   return to_string(value);
 }
 
 template <>
-long long int TypedBoxedValue<'8', uint64_t>::asIntegral() {
+long long int TypedBoxedValue<'8', uint64_t>::asIntegral() const {
   return value;
 }
 
@@ -164,12 +164,12 @@ long long int TypedBoxedValue<'8', uint64_t>::asIntegral() {
 template struct TypedBoxedValue<'m', shared_ptr<void>>;
 
 template <>
-string TypedBoxedValue<'m', shared_ptr<void>>::asString() {
+string TypedBoxedValue<'m', shared_ptr<void>>::asString() const {
   return value ? interpreted_string(value.get()) : "nullptr";
 }
 
 template <>
-long long int TypedBoxedValue<'m', shared_ptr<void>>::asIntegral() {
+long long int TypedBoxedValue<'m', shared_ptr<void>>::asIntegral() const {
   cannot_convert(this->getTypeId(), "integer");
   return 0;
 }
@@ -180,12 +180,12 @@ long long int TypedBoxedValue<'m', shared_ptr<void>>::asIntegral() {
 template struct TypedBoxedValue<'p', void*>;
 
 template <>
-string TypedBoxedValue<'p', void*>::asString() {
+string TypedBoxedValue<'p', void*>::asString() const {
   return interpreted_string(value);
 }
 
 template <>
-long long int TypedBoxedValue<'p', void*>::asIntegral() {
+long long int TypedBoxedValue<'p', void*>::asIntegral() const {
   cannot_convert(this->getTypeId(), "integer");
   return 0;
 }
@@ -196,13 +196,13 @@ long long int TypedBoxedValue<'p', void*>::asIntegral() {
 template struct TypedBoxedValue<'C', Constructor>;
 
 template <>
-string TypedBoxedValue<'C', Constructor>::asString() {
+string TypedBoxedValue<'C', Constructor>::asString() const {
   cannot_convert(this->getTypeId(), "string");
   return "";
 }
 
 template <>
-long long int TypedBoxedValue<'C', Constructor>::asIntegral() {
+long long int TypedBoxedValue<'C', Constructor>::asIntegral() const {
   cannot_convert(this->getTypeId(), "integer");
   return 0;
 }
