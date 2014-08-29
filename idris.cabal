@@ -68,6 +68,8 @@ Data-files:            idrisdoc/styles.css
                        cpprts/main.h
                        cpprts/mem.h
                        cpprts/types.h
+                       cpprts/types_aliases.h
+                       cpprts/types_extern.h
                        cpprts/utility.h
                        cpprts/vm.h
 

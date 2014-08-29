@@ -90,6 +90,8 @@ struct Constructor {
     , function(nullptr)
     , args({args...})
     {}
+
+  ~Constructor();
 };
 
 } // namespace idris

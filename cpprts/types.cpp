@@ -1,8 +1,10 @@
 
 #include <sstream>
 #include <iostream>
+#include <stack>
 #include <codecvt>
 #include "box.h"
+#include "types_aliases.h"
 
 namespace idris {
   
@@ -18,7 +20,6 @@ string interpreted_string(T value) {
 void cannot_convert(char src, string tgt) {
   cout << "Cannot convert type " << src << " to " << tgt << "!" << endl;
 }
-
 
 //---------------------------------------------------------------------------------------
 // Int
@@ -205,6 +206,53 @@ template <>
 long long int TypedBoxedValue<'C', Constructor>::asIntegral() const {
   cannot_convert(this->getTypeId(), "integer");
   return 0;
+}
+
+//---------------------------------------------------------------------------------------
+// Unroll recursive Con destructions to prevent blowing the stack
+//---------------------------------------------------------------------------------------
+
+static void release_cons_tree(const vector<Value>& args);
+
+static const Value* getCon(const vector<Value>& args) {
+  const Value* result = nullptr;
+  for (auto& arg : args) {
+    if (arg and arg->getTypeId() == 'C') {
+      if (result == nullptr) {
+        result = &arg;
+      } else { // found another branch
+        auto con = dynamic_cast<Con*>(arg.get());
+        release_cons_tree(con->get().args);
+      }
+    }
+  }
+  return result;
+}
+
+static void findCons(const vector<Value>& initialArgs, stack<Value*>& cons) {
+  const vector<Value>* args = &initialArgs;
+  while (not args->empty()) {
+    if (auto arg = getCon(*args)) {
+      cons.push(const_cast<Value*>(arg));
+      auto con = dynamic_cast<Con*>(arg->get());
+      args = &(con->get().args);
+    } else {
+      return;
+    }
+  }
+}
+
+static void release_cons_tree(const vector<Value>& args) {
+  stack<Value*> cons;
+  findCons(args, cons);
+  while (not cons.empty()) {
+    cons.top()->reset();
+    cons.pop();
+  }
+}
+
+Constructor::~Constructor() {
+  release_cons_tree(args);
 }
 
 } // namespace idris
