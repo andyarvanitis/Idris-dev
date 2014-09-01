@@ -14,7 +14,7 @@
                                      weak_ptr<BoxedValue> _fcon, \
                                      const IndexType _oldbase){ \
   return WRAPPER_VARIANT(LAMBDA_WRAPPER, __VA_ARGS__)(__VA_ARGS__); \
-}(g_vm, fcon, oldbase) // call this outer lambda right now
+}(vm, fcon, oldbase) // call this outer lambda right now
 
 #define LAMBDA_CAPTURE_LIST _vm, _fcon, _oldbase
 

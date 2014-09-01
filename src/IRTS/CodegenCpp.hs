@@ -109,7 +109,7 @@ codegenCpp_all ::
      OutputType ->      -- output type
      FilePath ->        -- output file name
      [FilePath] ->      -- include files
-     String ->          -- extra object files
+     String ->          -- extra object files`as
      String ->          -- libraries
      String ->          -- extra compiler flags
      DbgLevel ->        -- debug level
@@ -187,7 +187,7 @@ codegenCpp_all definitions outputType filename includes objs libs flags dbg = do
       ccDbg _ = "-O2"      
 
       varDecl :: Cpp -> T.Text
-      varDecl (CppAlloc name (Just (CppFunction _ _))) = T.pack $ "void " ++ name ++ "(IndexType,IndexType);\n"
+      varDecl (CppAlloc name (Just (CppFunction _ _))) = T.pack $ "void " ++ name ++ "(" ++ (intercalate "," cppFUNCPARMS) ++ ");\n"
       varDecl (CppAlloc name _) = T.pack $ "extern Value " ++ name ++ ";\n"
       varDecl _ = ""      
       
@@ -344,13 +344,14 @@ splitFunction (CppAlloc name (Just (CppFunction args body@(CppSeq _)))) = do
 
       newCall :: Int -> Cpp
       newCall depth =
-        CppApp (CppIdent "vmcall") [ CppIdent $ name ++ "_" ++ show depth
-                                 , CppArray [cppOLDBASE, cppMYOLDBASE]
-                                 ]
+        CppApp (CppIdent "vmcall") [ cppVM
+                                   , CppIdent $ name ++ "_" ++ show depth
+                                   , CppArray [cppOLDBASE, cppMYOLDBASE]
+                                   ]
 
       newFun :: [Cpp] -> Cpp
       newFun seq =
-        CppAlloc name (Just $ CppFunction ["IndexType oldbase", "IndexType myoldbase"] (CppSeq seq))
+        CppAlloc name (Just $ CppFunction cppFUNCPARMS (CppSeq seq))
 
 splitFunction cpp = return cpp
 
@@ -360,10 +361,10 @@ translateDecl info (name@(MN 0 fun), bc)
          allocCaseFunctions (snd body)
       ++ [ CppAlloc (
                translateName name
-           ) (Just $ CppFunction ["IndexType oldbase", "IndexType myoldbase"] (
+           ) (Just $ CppFunction cppFUNCPARMS (
                CppSeq $ map (translateBC info) (fst body) ++ [
                  CppCond [ ( (translateReg $ caseReg (snd body)) `cppInstanceOf` "C" `cppAnd` func
-                          , CppApp func [cppOLDBASE, cppMYOLDBASE]
+                          , CppApp func [cppVM, cppOLDBASE, cppMYOLDBASE]
                           )
                           , ( CppNoop
                             , CppSeq $ map (translateBC info) (defaultCase (snd body))
@@ -401,7 +402,7 @@ translateDecl info (name@(MN 0 fun), bc)
     prepBranch (tag, code) =
       CppAlloc (
         translateName name ++ "_" ++ show tag
-      ) (Just $ CppFunction ["IndexType oldbase", "IndexType myoldbase"] (
+      ) (Just $ CppFunction cppFUNCPARMS (
           CppSeq $ map (translateBC info) code
         )
       )
@@ -409,7 +410,7 @@ translateDecl info (name@(MN 0 fun), bc)
 translateDecl info (name, bc) =
   [ CppAlloc (
        translateName name
-     ) (Just $ CppFunction ["IndexType oldbase", "IndexType myoldbase"] (
+     ) (Just $ CppFunction cppFUNCPARMS (
          CppSeq $ map (translateBC info)bc
        )
      )
@@ -466,13 +467,13 @@ cppCALL :: CompileInfo -> Name -> Cpp
 cppCALL _ n =
   CppApp (
     CppIdent "vmcall"
-  ) [CppIdent (translateName n), CppArray [cppMYOLDBASE,CppNum (CppInt 0)]]
+  ) [cppVM, CppIdent (translateName n), CppArray [cppMYOLDBASE,CppNum (CppInt 0)]]
 
 cppTAILCALL :: CompileInfo -> Name -> Cpp
 cppTAILCALL _ n =
   CppApp (
     CppIdent "vmcall"
-  ) [CppIdent (translateName n), CppArray [cppOLDBASE,CppNum (CppInt 0)]]
+  ) [cppVM, CppIdent (translateName n), CppArray [cppOLDBASE,CppNum (CppInt 0)]]
 
 cppFOREIGN :: CompileInfo -> Reg -> String -> [(FType, Reg)] -> FType -> Cpp
 cppFOREIGN _ reg n args ret
@@ -626,7 +627,7 @@ cppERROR _ = CppError
 
 cppSLIDE :: CompileInfo -> Int -> Cpp
 cppSLIDE _ 1 = CppAssign (cppLOC 0) (cppTOP 0)
-cppSLIDE _ n = CppApp (CppIdent "slide") [CppNum (CppInt n)]
+cppSLIDE _ n = CppApp (CppIdent "slide") [cppVM, CppNum (CppInt n)]
 
 cppMKCON :: CompileInfo -> Reg -> Int -> [Reg] -> Cpp
 cppMKCON info r t rs =
@@ -686,7 +687,8 @@ cppPROJECT _ reg loc 1  =
              (CppNum $ CppInt 0)
   )
 cppPROJECT _ reg loc ar =
-  CppApp (CppIdent "project") [ translateReg reg
+  CppApp (CppIdent "project") [ cppVM
+                              , translateReg reg
                               , CppNum (CppInt loc)
                               , CppNum (CppInt ar)
                               ]
@@ -915,19 +917,19 @@ cppRESERVE :: CompileInfo -> Int -> Cpp
 cppRESERVE _ _ = CppNoop
 
 cppSTACK :: Cpp
-cppSTACK = CppIdent "g_vm->valstack"
+cppSTACK = CppIdent "vm->valstack"
 
 cppCALLSTACK :: Cpp
-cppCALLSTACK = CppIdent "g_vm->callstack"
+cppCALLSTACK = CppIdent "vm->callstack"
 
 cppARGSTACK :: Cpp
-cppARGSTACK = CppIdent "g_vm->argstack"
+cppARGSTACK = CppIdent "vm->argstack"
 
 cppSTACKBASE :: Cpp
-cppSTACKBASE = CppIdent "g_vm->valstack_base"
+cppSTACKBASE = CppIdent "vm->valstack_base"
 
 cppSTACKTOP :: Cpp
-cppSTACKTOP = CppIdent "g_vm->valstack_top"
+cppSTACKTOP = CppIdent "vm->valstack_top"
 
 cppOLDBASE :: Cpp
 cppOLDBASE = CppIdent "oldbase"
@@ -935,8 +937,14 @@ cppOLDBASE = CppIdent "oldbase"
 cppMYOLDBASE :: Cpp
 cppMYOLDBASE = CppIdent "myoldbase"
 
+cppVM :: Cpp
+cppVM = CppIdent "vm"
+
+cppFUNCPARMS :: [String]
+cppFUNCPARMS = ["shared_ptr<VirtualMachine>& vm", "IndexType oldbase", "IndexType myoldbase"]
+
 cppRET :: Cpp
-cppRET = CppIdent "g_vm->ret"
+cppRET = CppIdent "vm->ret"
 
 cppLOC :: Int -> Cpp
 cppLOC 0 = CppIndex cppSTACK cppSTACKBASE

@@ -37,17 +37,14 @@ struct VirtualMachine {
 
 //---------------------------------------------------------------------------------------
 
-extern shared_ptr<VirtualMachine> g_vm;
+void slide(shared_ptr<VirtualMachine>& vm,
+           const size_t num_args);
 
-//---------------------------------------------------------------------------------------
+void project(shared_ptr<VirtualMachine>& vm,
+             const Value& value, const IndexType loc, const int arity);
 
-void schedule(shared_ptr<VirtualMachine>& vm);
-
-void slide(const size_t num_args);
-
-void project(const Value& value, const IndexType loc, const int arity);
-
-void vmcall(const Func& fn, const ArgsPair& args);
+void vmcall(shared_ptr<VirtualMachine>& vm,
+            const Func& fn, const ArgsPair& args);
 
 //---------------------------------------------------------------------------------------
 

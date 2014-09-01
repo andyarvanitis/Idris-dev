@@ -8,31 +8,33 @@ namespace idris {
 
 //-------------------------------------------------------------------------------------------------
 
-void process_args(Value&, const IndexType) {
+void process_args(shared_ptr<VirtualMachine>&, Value&, const IndexType) {
 }
 
 template <typename A, typename... ArgTypes>
-void process_args(Value& res, const IndexType oldbase,
+void process_args(shared_ptr<VirtualMachine>& vm, Value& res, const IndexType oldbase,
                   A arg, ArgTypes&&... args) {
 
-  void _idris__123_APPLY0_125_(IndexType,IndexType);
+  void _idris__123_APPLY0_125_(shared_ptr<VirtualMachine>&,IndexType,IndexType);
 
   if (res->getTypeId() == 'C') {
-    g_vm->valstack_top += 1;
-    g_vm->valstack[g_vm->valstack_top] = res;
-    g_vm->valstack[g_vm->valstack_top + 1] = box<typename FromNative<A>::type>(arg);
-    slide(2);
-    g_vm->valstack_top = g_vm->valstack_base + 2;
-    vmcall(_idris__123_APPLY0_125_,{oldbase,0});
-    while (g_vm->callstack.size()) {
-      auto func = g_vm->callstack.top() ; g_vm->callstack.pop();
-      auto fargs = g_vm->argstack.top() ; g_vm->argstack.pop();
-      func(get<0>(fargs),get<1>(fargs));
+    vm->valstack_top += 1;
+    vm->valstack[vm->valstack_top] = res;
+    vm->valstack[vm->valstack_top + 1] = box<typename FromNative<A>::type>(arg);
+    slide(vm, 2);
+    vm->valstack_top = vm->valstack_base + 2;
+    vmcall(vm, _idris__123_APPLY0_125_, {oldbase,0});
+    while (vm->callstack.size()) {
+      auto func = vm->callstack.top();
+      vm->callstack.pop();
+      auto fargs = vm->argstack.top();
+      vm->argstack.pop();
+      func(vm, get<0>(fargs),get<1>(fargs));
     }
-    res = g_vm->ret;
+    res = vm->ret;
   }
 
-  process_args(res, oldbase, forward<ArgTypes>(args)...);
+  process_args(vm, res, oldbase, forward<ArgTypes>(args)...);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -48,24 +50,19 @@ RetType proxy_function(const weak_ptr<VirtualMachine>& vm_weak,
   auto con = con_weak.lock();
   //
   if (vm and con) {
-    // Switch runtime to this vm. TODO: thread safety, etc..
-    auto vm_previous = g_vm;
-    g_vm = vm;
-  
-    // Create (empty) private stacks and make them the system's currently used ones.
+    // Create (empty) private stacks and use them for this context.
     CallStack callstack;
     ArgStack argstack;
-    g_vm->callstack.swap(callstack);
-    g_vm->argstack.swap(argstack);
+    vm->callstack.swap(callstack);
+    vm->argstack.swap(argstack);
   
     auto res = con;
-    process_args(res, oldbase, forward<ArgTypes>(args)...);
-    auto result = g_vm->ret;
+    process_args(vm, res, oldbase, forward<ArgTypes>(args)...);
+    auto result = vm->ret;
   
-    // Restore the stacks and vm
-    g_vm->callstack.swap(callstack);
-    g_vm->argstack.swap(argstack);    
-    g_vm = vm_previous;
+    // Restore the original stacks
+    vm->callstack.swap(callstack);
+    vm->argstack.swap(argstack);
 
     return unbox<typename FromNative<RetType>::type>(result);
 
