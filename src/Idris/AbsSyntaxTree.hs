@@ -302,7 +302,6 @@ data Codegen = Via String
 --              | ViaJavaScript
 --              | ViaLLVM
              | Bytecode
-             | ViaCpp
     deriving (Show, Eq)
 
 -- | REPL commands

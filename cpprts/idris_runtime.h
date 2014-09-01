@@ -3,8 +3,8 @@
 
 #include "box.h"
 #include "types.h"
-// #include "lambdas.h"
-// #include "callbacks.h"
+#include "lambdas.h"
+#include "callbacks.h"
 #include "vm.h"
 #include "io.h"
 #include "main.h"

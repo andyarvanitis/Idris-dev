@@ -125,7 +125,7 @@ generate codegen mainmod ir
        Via "javascript" -> codegenJavaScript ir
        Via "node" -> codegenNode ir
        Via "llvm" -> codegenLLVM ir
-       Via "c++" -> codegenCpp ir 
+       Via "cpp" -> codegenCpp ir
        -- Any external code generator
        Via cg -> do let cmd = "idris-" ++ cg ++ " " ++ mainmod ++
                               " -o " ++ outputFile ir

@@ -1,19 +1,47 @@
 #ifndef __idris_cpp_runtime_callbacks_h_
 #define __idris_cpp_runtime_callbacks_h_
 
-#include "box.h"
 #include "types.h"
 #include "vm.h"
 
 namespace idris {
 
+//-------------------------------------------------------------------------------------------------
+
+void process_args(Value&, const IndexType) {
+}
+
+template <typename A, typename... ArgTypes>
+void process_args(Value& res, const IndexType oldbase,
+                  A arg, ArgTypes&&... args) {
+
+  void _idris__123_APPLY0_125_(IndexType,IndexType);
+
+  if (res->getTypeId() == 'C') {
+    g_vm->valstack_top += 1;
+    g_vm->valstack[g_vm->valstack_top] = res;
+    g_vm->valstack[g_vm->valstack_top + 1] = box<typename FromNative<A>::type>(arg);
+    slide(2);
+    g_vm->valstack_top = g_vm->valstack_base + 2;
+    vmcall(_idris__123_APPLY0_125_,{oldbase,0});
+    while (g_vm->callstack.size()) {
+      auto func = g_vm->callstack.top() ; g_vm->callstack.pop();
+      auto fargs = g_vm->argstack.top() ; g_vm->argstack.pop();
+      func(get<0>(fargs),get<1>(fargs));
+    }
+    res = g_vm->ret;
+  }
+
+  process_args(res, oldbase, forward<ArgTypes>(args)...);
+}
+
+//-------------------------------------------------------------------------------------------------
+
 template <typename RetType, typename... ArgTypes>
 RetType proxy_function(const weak_ptr<VirtualMachine>& vm_weak, 
                        const weak_ptr<BoxedValue>& con_weak, 
-                       const IndexType& oldbase,
+                       const IndexType oldbase,
                        ArgTypes... args) {  
-
-  void _idris__123_APPLY0_125_(IndexType,IndexType);
 
   // Make sure the vm hasn't been destroyed (nor the function con)
   auto vm = vm_weak.lock();
@@ -31,25 +59,7 @@ RetType proxy_function(const weak_ptr<VirtualMachine>& vm_weak,
     g_vm->argstack.swap(argstack);
   
     auto res = con;
-    const vector<BoxedValue> arglist = { args... };
-  
-    for (auto arg : arglist) {
-      if (res->getTypeId() == 'C') {
-        g_vm->valstack_top += 1;
-        g_vm->valstack[g_vm->valstack_top] = res;
-        g_vm->valstack[g_vm->valstack_top + 1] = make_shared<Closure>(arg);
-        slide(2);
-        g_vm->valstack_top = g_vm->valstack_base + 2;
-        vmcall(_idris__123_APPLY0_125_,{oldbase,0});  
-        while (g_vm->callstack.size()) {
-          auto func = g_vm->callstack.top() ; g_vm->callstack.pop();
-          auto fargs = g_vm->argstack.top() ; g_vm->argstack.pop();
-          func(get<0>(fargs),get<1>(fargs));
-        }  
-        res = g_vm->ret;
-      }
-    }
-  
+    process_args(res, oldbase, forward<ArgTypes>(args)...);
     auto result = g_vm->ret;
   
     // Restore the stacks and vm
@@ -57,7 +67,7 @@ RetType proxy_function(const weak_ptr<VirtualMachine>& vm_weak,
     g_vm->argstack.swap(argstack);    
     g_vm = vm_previous;
 
-    return unbox<RetType>(result);
+    return unbox<typename FromNative<RetType>::type>(result);
 
   } else {
     return RetType(0);

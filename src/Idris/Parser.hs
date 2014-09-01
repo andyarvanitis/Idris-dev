@@ -943,7 +943,6 @@ Codegen ::= 'C'
 codegen_ :: IdrisParser Codegen
 codegen_ = do n <- identifier; return (Via (map toLower n))
        <|> do reserved "Bytecode"; return Bytecode
-       <|> do reserved "Cpp"; return ViaCpp
        <?> "code generation language"
 
 {- |Parses a compiler directive
