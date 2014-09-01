@@ -5,6 +5,7 @@
 #include <vector>
 #include <string>
 #include <functional>
+#include <cassert>
 
 namespace idris {
 
@@ -33,11 +34,8 @@ struct TypedBoxedValue : public BoxedValue {
   template <typename... ArgTypes>
   TypedBoxedValue(ArgTypes&&... args) : value(forward<ArgTypes>(args)...) {}
   
-  inline auto get() const -> const T& { return value; }
-  
   string asString() const;
   long long int asIntegral() const;
-  
 };
 
 //---------------------------------------------------------------------------------------
@@ -58,8 +56,9 @@ inline auto box(ArgTypes&&... args) -> Value {
 //---------------------------------------------------------------------------------------
 
 template <typename T>
-auto unbox(const Value& boxedValue) -> typename result_of<decltype(&T::get)(T)>::type {
-  return dynamic_pointer_cast<T>(boxedValue)->get();
+inline auto unbox(const Value& boxedValue) -> const decltype(T::value) & {
+  assert(boxedValue);
+  return dynamic_pointer_cast<T>(boxedValue)->value;
 }
 
 //---------------------------------------------------------------------------------------
@@ -75,7 +74,7 @@ struct Constructor {
   
   const size_t tag;
   const Func function;
-  const Args args;
+  Args args; // non-const to allow unrolled destruction
 
   template <typename ... ArgTypes>
   Constructor(const size_t tag, const Func& function, ArgTypes&&... args)
@@ -90,6 +89,8 @@ struct Constructor {
     , function(nullptr)
     , args({args...})
     {}
+
+  Constructor(const Constructor&) = delete;
 
   ~Constructor();
 };
