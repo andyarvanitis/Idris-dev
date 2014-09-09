@@ -5,10 +5,10 @@ module Idris.CaseSplit(splitOnLine, replaceSplits,
                        mkWith,
                        nameMissing,
                        getUniq, nameRoot) where
-
 -- splitting a variable in a pattern clause
 
 import Idris.AbsSyntax
+import Idris.AbsSyntaxTree (Idris, IState, PTerm)
 import Idris.ElabDecls
 import Idris.ElabTerm
 import Idris.Delaborate
@@ -91,9 +91,11 @@ data MergeState = MS { namemap :: [(Name, Name)],
                        explicit :: [Name],
                        updates :: [(Name, PTerm)] }
 
+addUpdate :: Name -> Idris.AbsSyntaxTree.PTerm -> State MergeState ()
 addUpdate n tm = do ms <- get
                     put (ms { updates = ((n, stripNS tm) : updates ms) } )
 
+inventName :: Idris.AbsSyntaxTree.IState -> Maybe Name -> Name -> State MergeState Name
 inventName ist ty n = 
     do ms <- get
        let supp = case ty of
@@ -115,11 +117,14 @@ inventName ist ty n =
                 put (ms { invented = (n, n') : invented ms })
                 return n'
                 
+mkSupply :: [Name] -> [Name]
 mkSupply ns = mkSupply' ns (map nextName ns)
   where mkSupply' xs ns' = xs ++ mkSupply ns'
    
+varlist :: [Name]
 varlist = map (sUN . (:[])) "xyzwstuv" -- EB's personal preference :)
 
+stripNS :: Idris.AbsSyntaxTree.PTerm -> Idris.AbsSyntaxTree.PTerm
 stripNS tm = mapPT dens tm where
     dens (PRef fc n) = PRef fc (nsroot n)
     dens t = t
@@ -176,7 +181,7 @@ argTys ist (PRef fc n)
     = case lookupTy n (tt_ctxt ist) of
            [ty] -> map (tyName . snd) (getArgTys ty) ++ repeat Nothing
            _ -> repeat Nothing
-  where tyName (Bind _ (Pi _) _) = Just (sUN "->")
+  where tyName (Bind _ (Pi _ _) _) = Just (sUN "->")
         tyName t | (P _ n _, _) <- unApply t = Just n
                  | otherwise = Nothing
 argTys _ _ = repeat Nothing
@@ -310,6 +315,8 @@ replaceSplits l ups = updateRHSs 1 (map (rep (expandBraces l)) ups)
                    , not (isSuffixOf ")" tm) = "(" ++ tm ++ ")"
                    | otherwise = tm
 
+
+getUniq :: (Show t, Num t) => [Char] -> t -> Idris ([Char], t) 
 getUniq nm i
        = do ist <- getIState
             let n = nameRoot [] nm ++ "_" ++ show i

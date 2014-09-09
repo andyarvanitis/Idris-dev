@@ -103,9 +103,9 @@ elabPrims = do mapM_ (elabDecl' EAll recinfo)
 
           p_believeMe [_,_,x] = Just x
           p_believeMe _ = Nothing
-          believeTy = Bind (sUN "a") (Pi (TType (UVar (-2))))
-                       (Bind (sUN "b") (Pi (TType (UVar (-2))))
-                         (Bind (sUN "x") (Pi (V 1)) (V 1)))
+          believeTy = Bind (sUN "a") (Pi (TType (UVar (-2))) (TType (UVar (-1))))
+                       (Bind (sUN "b") (Pi (TType (UVar (-2))) (TType (UVar (-1))))
+                         (Bind (sUN "x") (Pi (V 1) (TType (UVar (-1)))) (V 1)))
           elabBelieveMe
              = do let prim__believe_me = sUN "prim__believe_me"
                   updateContext (addOperator prim__believe_me believeTy 3 p_believeMe)
@@ -122,14 +122,14 @@ elabPrims = do mapM_ (elabDecl' EAll recinfo)
           p_synEq args = Nothing
 
           nMaybe = P (TCon 0 2) (sNS (sUN "Maybe") ["Maybe", "Prelude"]) Erased
-          vnJust = VP (DCon 1 2) (sNS (sUN "Just") ["Maybe", "Prelude"]) VErased
-          vnNothing = VP (DCon 0 1) (sNS (sUN "Nothing") ["Maybe", "Prelude"]) VErased
-          vnRefl = VP (DCon 0 2) eqCon VErased
+          vnJust = VP (DCon 1 2 False) (sNS (sUN "Just") ["Maybe", "Prelude"]) VErased
+          vnNothing = VP (DCon 0 1 False) (sNS (sUN "Nothing") ["Maybe", "Prelude"]) VErased
+          vnRefl = VP (DCon 0 2 False) eqCon VErased
 
-          synEqTy = Bind (sUN "a") (Pi (TType (UVar (-3))))
-                     (Bind (sUN "b") (Pi (TType (UVar (-3))))
-                      (Bind (sUN "x") (Pi (V 1))
-                       (Bind (sUN "y") (Pi (V 1))
+          synEqTy = Bind (sUN "a") (Pi (TType (UVar (-3))) (TType (UVar (-2))))
+                     (Bind (sUN "b") (Pi (TType (UVar (-3))) (TType (UVar (-2))))
+                      (Bind (sUN "x") (Pi (V 1) (TType (UVar (-2))))
+                       (Bind (sUN "y") (Pi (V 1) (TType (UVar (-2))))
                          (mkApp nMaybe [mkApp (P (TCon 0 4) eqTy Erased)
                                                [V 3, V 2, V 1, V 0]]))))
           elabSynEq

@@ -17,6 +17,7 @@ import Util.DynamicLinker
 import System.Console.Haskeline
 import System.IO
 
+import Control.Applicative
 import Control.Monad.State
 import Control.Monad.Error(throwError)
 
@@ -228,7 +229,7 @@ addTyInfConstraints fc ts = do logLvl 2 $ "TI missing: " ++ show ts
                       (P (TCon _ _) n _, P (TCon _ _) n' _) -> errWhen (n/=n) 
                       (P (TCon _ _) n _, Constant _) -> errWhen True
                       (Constant _, P (TCon _ _) n' _) -> errWhen True
-                      (P (DCon _ _) n _, P (DCon _ _) n' _) -> errWhen (n/=n) 
+                      (P (DCon _ _ _) n _, P (DCon _ _ _) n' _) -> errWhen (n/=n) 
                       _ -> return ()
 
               where errWhen True 
@@ -1026,7 +1027,7 @@ getPriority i tm = 1 -- pri tm
   where
     pri (PRef _ n) =
         case lookupP n (tt_ctxt i) of
-            ((P (DCon _ _) _ _):_) -> 1
+            ((P (DCon _ _ _) _ _):_) -> 1
             ((P (TCon _ _) _ _):_) -> 1
             ((P Ref _ _):_) -> 1
             [] -> 0 -- must be locally bound, if it's not an error...
@@ -1065,7 +1066,7 @@ addStatics n tm ptm =
        putIState $ i { idris_statics = addDef n stpos (idris_statics i) }
        addIBC (IBCStatic n)
   where
-    initStatics (Bind n (Pi ty) sc) (PPi p _ _ s)
+    initStatics (Bind n (Pi ty _) sc) (PPi p _ _ s)
             = let (static, dynamic) = initStatics (instantiate (P Bound n ty) sc) s in
                   if pstatic p == Static then ((n, ty) : static, dynamic)
                     else if (not (searchArg p)) 
@@ -1073,7 +1074,7 @@ addStatics n tm ptm =
                             else (static, dynamic)
     initStatics t pt = ([], [])
 
-    freeArgNames (Bind n (Pi ty) sc) 
+    freeArgNames (Bind n (Pi ty _) sc) 
           = nub $ freeArgNames ty 
     freeArgNames tm = let (_, args) = unApply tm in
                           concatMap freeNames args
@@ -1085,7 +1086,7 @@ addStatics n tm ptm =
     searchArg (TacImp _ _ _) = True
     searchArg _ = False
 
-    staticList sts (Bind n (Pi _) sc) = (n `elem` sts) : staticList sts sc
+    staticList sts (Bind n (Pi _ _) sc) = (n `elem` sts) : staticList sts sc
     staticList _ _ = []
 
 -- Dealing with implicit arguments
@@ -1186,7 +1187,7 @@ getUnboundImplicits i t tm = getImps t (collectImps tm)
             = (n, (p, t)) : collectImps sc
         collectImps _ = []
 
-        getImps (Bind n (Pi t) sc) imps
+        getImps (Bind n (Pi t _) sc) imps
             | Just (p, t') <- lookup n imps = argInfo n p t' : getImps sc imps
          where
             argInfo n (Imp opt _ _) t' 
@@ -1200,7 +1201,7 @@ getUnboundImplicits i t tm = getImps t (collectImps tm)
             argInfo n (TacImp opt _ scr) t' 
                    = (InaccessibleArg `elem` opt,
                           PTacImplicit 10 opt n scr t')
-        getImps (Bind n (Pi t) sc) imps = impBind n t : getImps sc imps
+        getImps (Bind n (Pi t _) sc) imps = impBind n t : getImps sc imps
            where impBind n t = (True, PImp 1 True [] n Placeholder)
         getImps sc tm = []
 
@@ -1474,7 +1475,7 @@ aiFn inpat True qq ist fc f ds []
           imp _ = True
 --           allImp [] = False
           allImp xs = all imp xs
-          constructor (TyDecl (DCon _ _) _) = True
+          constructor (TyDecl (DCon _ _ _) _) = True
           constructor _ = False
 
           conCaf ctxt (n, cia) = (isDConName n ctxt || (qq && isTConName n ctxt)) && allImp cia
@@ -1612,7 +1613,7 @@ stripUnmatchable :: IState -> PTerm -> PTerm
 stripUnmatchable i (PApp fc fn args) = PApp fc fn (fmap (fmap su) args) where
     su :: PTerm -> PTerm
     su (PRef fc f)
-       | (Bind n (Pi t) sc :_) <- lookupTy f (tt_ctxt i) 
+       | (Bind n (Pi t _) sc :_) <- lookupTy f (tt_ctxt i) 
           = Placeholder
     su (PApp fc fn args) 
        = PApp fc fn (fmap (fmap su) args)
@@ -1663,7 +1664,11 @@ findStatics ist tm = trace (show tm) $
         pos ns ss t = return t
 
 -- for 6.12/7 compatibility
-data EitherErr a b = LeftErr a | RightOK b
+data EitherErr a b = LeftErr a | RightOK b deriving ( Functor )
+
+instance Applicative (EitherErr a) where
+    pure  = return
+    (<*>) = ap
 
 instance Monad (EitherErr a) where
     return = RightOK

@@ -31,6 +31,8 @@ import Numeric (showIntAtBase)
 import qualified Data.Text as T
 import Data.List
 import Data.Maybe (listToMaybe)
+import Data.Foldable (Foldable)
+import Data.Traversable (Traversable)
 import Data.Vector.Unboxed (Vector)
 import qualified Data.Vector.Unboxed as V
 import qualified Data.Binary as B
@@ -137,6 +139,8 @@ data Err' t
           | CantResolveAlts [Name]
           | IncompleteTerm t
           | UniverseError
+          | UniqueError Universe Name
+          | UniqueKindError Universe Name
           | ProgramLineComment
           | Inaccessible Name
           | NonCollapsiblePostulate Name
@@ -303,6 +307,7 @@ deriving instance NFData Name
 !-}
 
 data SpecialName = WhereN Int Name Name
+                 | WithN Int Name
                  | InstanceN Name [T.Text]
                  | ParentN Name T.Text
                  | MethodN Name
@@ -347,6 +352,7 @@ instance Show Name where
 
 instance Show SpecialName where
     show (WhereN i p c) = show p ++ ", " ++ show c
+    show (WithN i n) = "with block in " ++ show n
     show (InstanceN cl inst) = showSep ", " (map T.unpack inst) ++ " instance of " ++ show cl
     show (MethodN m) = "method " ++ show m
     show (ParentN p c) = show p ++ "#" ++ T.unpack c
@@ -362,6 +368,7 @@ showCG (MN _ u) | u == txt "underscore" = "_"
 showCG (MN i s) = "{" ++ T.unpack s ++ show i ++ "}"
 showCG (SN s) = showCG' s
   where showCG' (WhereN i p c) = showCG p ++ ":" ++ showCG c ++ ":" ++ show i
+        showCG' (WithN i n) = "_" ++ showCG n ++ "_with_" ++ show i
         showCG' (InstanceN cl inst) = '@':showCG cl ++ '$':showSep ":" (map T.unpack inst)
         showCG' (MethodN m) = '!':showCG m
         showCG' (ParentN p c) = showCG p ++ "#" ++ show c
@@ -592,10 +599,19 @@ constDocs (B32V v)                         = "A vector of thirty-two-bit values"
 constDocs (B64V v)                         = "A vector of sixty-four-bit values"
 constDocs prim                             = "Undocumented"
 
+data Universe = NullType | UniqueType | AllTypes
+  deriving (Eq, Ord)
+
+instance Show Universe where
+    show UniqueType = "UniqueType"
+    show NullType = "NullType"
+    show AllTypes = "Type*"
+
 data Raw = Var Name
          | RBind Name (Binder Raw) Raw
          | RApp Raw Raw
          | RType
+         | RUType Universe
          | RForce Raw
          | RConstant Const
   deriving (Show, Eq)
@@ -605,6 +621,7 @@ instance Sized Raw where
   size (RBind name bind right) = 1 + size bind + size right
   size (RApp left right) = 1 + size left + size right
   size RType = 1
+  size (RUType _) = 1
   size (RForce raw) = 1 + size raw
   size (RConstant const) = size const
 
@@ -623,7 +640,8 @@ deriving instance NFData Raw
 -- the types of bindings (and their values, if any); the attached identifiers are part
 -- of the 'Bind' constructor for the 'TT' type.
 data Binder b = Lam   { binderTy  :: !b {-^ type annotation for bound variable-}}
-              | Pi    { binderTy  :: !b }
+              | Pi    { binderTy  :: !b,
+                        binderKind :: !b }
                 {-^ A binding that occurs in a function type expression, e.g. @(x:Int) -> ...@ -}
               | Let   { binderTy  :: !b,
                         binderVal :: b {-^ value for bound variable-}}
@@ -638,7 +656,7 @@ data Binder b = Lam   { binderTy  :: !b {-^ type annotation for bound variable-}
               | PVar  { binderTy  :: !b }
                 -- ^ A pattern variable
               | PVTy  { binderTy  :: !b }
-  deriving (Show, Eq, Ord, Functor)
+  deriving (Show, Eq, Ord, Functor, Foldable, Traversable)
 {-!
 deriving instance Binary Binder
 deriving instance NFData Binder
@@ -646,7 +664,7 @@ deriving instance NFData Binder
 
 instance Sized a => Sized (Binder a) where
   size (Lam ty) = 1 + size ty
-  size (Pi ty) = 1 + size ty
+  size (Pi ty _) = 1 + size ty
   size (Let ty val) = 1 + size ty + size val
   size (NLet ty val) = 1 + size ty + size val
   size (Hole ty) = 1 + size ty
@@ -660,9 +678,9 @@ fmapMB f (Let t v)   = liftM2 Let (f t) (f v)
 fmapMB f (NLet t v)  = liftM2 NLet (f t) (f v)
 fmapMB f (Guess t v) = liftM2 Guess (f t) (f v)
 fmapMB f (Lam t)     = liftM Lam (f t)
-fmapMB f (Pi t)      = liftM Pi (f t)
+fmapMB f (Pi t k)    = liftM2 Pi (f t) (f k)
 fmapMB f (Hole t)    = liftM Hole (f t)
-fmapMB f (GHole i t)   = liftM (GHole i) (f t)
+fmapMB f (GHole i t) = liftM (GHole i) (f t)
 fmapMB f (PVar t)    = liftM PVar (f t)
 fmapMB f (PVTy t)    = liftM PVTy (f t)
 
@@ -715,7 +733,7 @@ type UCs = (Int, [UConstraint])
 
 data NameType = Bound
               | Ref
-              | DCon {nt_tag :: Int, nt_arity :: Int} -- ^ Data constructor
+              | DCon {nt_tag :: Int, nt_arity :: Int, nt_unique :: Bool} -- ^ Data constructor
               | TCon {nt_tag :: Int, nt_arity :: Int} -- ^ Type constructor
   deriving (Show, Ord)
 {-!
@@ -732,7 +750,7 @@ instance Pretty NameType OutputAnnotation where
 instance Eq NameType where
     Bound    == Bound    = True
     Ref      == Ref      = True
-    DCon _ a == DCon _ b = (a == b) -- ignore tag
+    DCon _ a _ == DCon _ b _ = (a == b) -- ignore tag
     TCon _ a == TCon _ b = (a == b) -- ignore tag
     _        == _        = False
 
@@ -751,6 +769,7 @@ data TT n = P NameType n (TT n) -- ^ named references with type
           | Erased -- ^ an erased term
           | Impossible -- ^ special case for totality checking
           | TType UExp -- ^ the type of types at some level
+          | UType Universe -- ^ Uniqueness type universe (disjoint from TType)
   deriving (Ord, Functor)
 {-!
 deriving instance Binary TT
@@ -800,6 +819,7 @@ type EnvTT n = [(n, Binder (TT n))]
 data Datatype n = Data { d_typename :: n,
                          d_typetag  :: Int,
                          d_type     :: (TT n),
+                         d_unique   :: Bool,
                          d_cons     :: [(n, TT n)] }
   deriving (Show, Functor, Eq)
 
@@ -821,11 +841,11 @@ instance Eq n => Eq (TT n) where
 -- constant, the type Type, pi-binding, or an application of an injective
 -- term.
 isInjective :: TT n -> Bool
-isInjective (P (DCon _ _) _ _) = True
+isInjective (P (DCon _ _ _) _ _) = True
 isInjective (P (TCon _ _) _ _) = True
 isInjective (Constant _)       = True
 isInjective (TType x)            = True
-isInjective (Bind _ (Pi _) sc) = True
+isInjective (Bind _ (Pi _ _) sc) = True
 isInjective (App f a)          = isInjective f
 isInjective _                  = False
 
@@ -998,6 +1018,20 @@ substTerm old new = st where
   st (Bind x b sc) = Bind x (fmap st b) (st sc)
   st t = t
 
+-- | Return number of occurrences of V 0 or bound name i the term
+occurrences :: Eq n => n -> TT n -> Int
+occurrences n t = execState (no' 0 t) 0
+  where
+    no' i (V x) | i == x = do num <- get; put (num + 1)
+    no' i (P Bound x _) | n == x = do num <- get; put (num + 1)
+    no' i (Bind n b sc) = do noB' i b; no' (i+1) sc
+       where noB' i (Let t v) = do no' i t; no' i v
+             noB' i (Guess t v) = do no' i t; no' i v
+             noB' i b = no' i (binderTy b)
+    no' i (App f a) = do no' i f; no' i a
+    no' i (Proj x _) = no' i x
+    no' i _ = return ()
+
 -- | Returns true if V 0 and bound name n do not occur in the term
 noOccurrence :: Eq n => n -> TT n -> Bool
 noOccurrence n t = no' 0 t
@@ -1024,7 +1058,7 @@ freeNames _ = []
 
 -- | Return the arity of a (normalised) type
 arity :: TT n -> Int
-arity (Bind n (Pi t) sc) = 1 + arity sc
+arity (Bind n (Pi t _) sc) = 1 + arity sc
 arity _ = 0
 
 -- | Deconstruct an application; returns the function and a list of arguments
@@ -1052,18 +1086,19 @@ unList tm = case unApply tm of
 -- with the corresponding name. It is an error if there are free de
 -- Bruijn indices.
 forget :: TT Name -> Raw
-forget tm = fe [] tm
-  where
-    fe env (P _ n _) = Var n
-    fe env (V i)     = Var (env !! i)
-    fe env (Bind n b sc) = let n' = uniqueName n env in
-                               RBind n' (fmap (fe env) b)
-                                        (fe (n':env) sc)
-    fe env (App f a) = RApp (fe env f) (fe env a)
-    fe env (Constant c)
-                     = RConstant c
-    fe env (TType i)   = RType
-    fe env Erased    = RConstant Forgot
+forget tm = forgetEnv [] tm
+    
+forgetEnv :: [Name] -> TT Name -> Raw
+forgetEnv env (P _ n _) = Var n
+forgetEnv env (V i)     = Var (env !! i)
+forgetEnv env (Bind n b sc) = let n' = uniqueName n env in
+                                  RBind n' (fmap (forgetEnv env) b)
+                                           (forgetEnv (n':env) sc)
+forgetEnv env (App f a) = RApp (forgetEnv env f) (forgetEnv env a)
+forgetEnv env (Constant c) = RConstant c
+forgetEnv env (TType i) = RType
+forgetEnv env (UType u) = RUType u
+forgetEnv env Erased    = RConstant Forgot
 
 -- | Introduce a 'Bind' into the given term for each element of the
 -- given list of (name, binder) pairs.
@@ -1081,13 +1116,13 @@ bindTyArgs b xs = bindAll (map (\ (n, ty) -> (n, b ty)) xs)
 -- | Return a list of pairs of the names of the outermost 'Pi'-bound
 -- variables in the given term, together with their types.
 getArgTys :: TT n -> [(n, TT n)]
-getArgTys (Bind n (Pi t) sc) = (n, t) : getArgTys sc
+getArgTys (Bind n (Pi t _) sc) = (n, t) : getArgTys sc
 getArgTys _ = []
 
 getRetTy :: TT n -> TT n
 getRetTy (Bind n (PVar _) sc) = getRetTy sc
 getRetTy (Bind n (PVTy _) sc) = getRetTy sc
-getRetTy (Bind n (Pi _) sc)   = getRetTy sc
+getRetTy (Bind n (Pi _ _) sc)   = getRetTy sc
 getRetTy sc = sc
 
 uniqueNameFrom :: [Name] -> [Name] -> Name
@@ -1120,6 +1155,7 @@ nextName (UN x) = let (num', nm') = T.span isDigit (T.reverse x)
 nextName (SN x) = SN (nextName' x)
   where
     nextName' (WhereN i f x) = WhereN i f (nextName x)
+    nextName' (WithN i n) = WithN i (nextName n)
     nextName' (CaseN n) = CaseN (nextName n)
     nextName' (MethodN n) = MethodN (nextName n)
 
@@ -1193,7 +1229,7 @@ prettyEnv env t = prettyEnv' env t False
         else
           lbracket <+> text (show i) <+> rbracket
       | otherwise      = text "unbound" <+> text (show i) <+> text "!"
-    prettySe p env (Bind n b@(Pi t) sc) debug
+    prettySe p env (Bind n b@(Pi t _) sc) debug
       | noOccurrence n sc && not debug =
           bracket p 2 $ prettySb env n b debug <> prettySe 10 ((n, b):env) sc debug
     prettySe p env (Bind n b sc) debug =
@@ -1209,7 +1245,7 @@ prettyEnv env t = prettyEnv' env t False
     -- Render a `Binder` and its name
     prettySb env n (Lam t) = prettyB env "λ" "=>" n t
     prettySb env n (Hole t) = prettyB env "?defer" "." n t
-    prettySb env n (Pi t) = prettyB env "(" ") ->" n t
+    prettySb env n (Pi t _) = prettyB env "(" ") ->" n t
     prettySb env n (PVar t) = prettyB env "pat" "." n t
     prettySb env n (PVTy t) = prettyB env "pty" "." n t
     prettySb env n (Let t v) = prettyBv env "let" "in" n t v
@@ -1235,8 +1271,10 @@ showEnv' env t dbg = se 10 env t where
                                     = (show $ fst $ env!!i) ++
                                       if dbg then "{" ++ show i ++ "}" else ""
                    | otherwise = "!!V " ++ show i ++ "!!"
-    se p env (Bind n b@(Pi t) sc)
-        | noOccurrence n sc && not dbg = bracket p 2 $ se 1 env t ++ " -> " ++ se 10 ((n,b):env) sc
+    se p env (Bind n b@(Pi t k) sc)
+        | noOccurrence n sc && not dbg = bracket p 2 $ se 1 env t ++ arrow k ++ se 10 ((n,b):env) sc
+       where arrow (TType _) = " -> "
+             arrow u = " [" ++ show u ++ "] -> "
     se p env (Bind n b sc) = bracket p 2 $ sb env n b ++ se 10 ((n,b):env) sc
     se p env (App f a) = bracket p 1 $ se 1 env f ++ " " ++ se 0 env a
     se p env (Proj x i) = se 1 env x ++ "!" ++ show i
@@ -1244,11 +1282,12 @@ showEnv' env t dbg = se 10 env t where
     se p env Erased = "[__]"
     se p env Impossible = "[impossible]"
     se p env (TType i) = "Type " ++ show i
+    se p env (UType u) = show u
 
     sb env n (Lam t)  = showb env "\\ " " => " n t
     sb env n (Hole t) = showb env "? " ". " n t
     sb env n (GHole i t) = showb env "?defer " ". " n t
-    sb env n (Pi t)   = showb env "(" ") -> " n t
+    sb env n (Pi t _)   = showb env "(" ") -> " n t
     sb env n (PVar t) = showb env "pat " ". " n t
     sb env n (PVTy t) = showb env "pty " ". " n t
     sb env n (Let t v)   = showbv env "let " " in " n t v
@@ -1308,7 +1347,7 @@ orderPats tm = op [] tm
 
     op ps (Bind n (PVar t) sc) = op ((n, PVar t) : ps) sc
     op ps (Bind n (Hole t) sc) = op ((n, Hole t) : ps) sc
-    op ps (Bind n (Pi t)   sc) = op ((n, Pi t) : ps) sc
+    op ps (Bind n (Pi t k) sc) = op ((n, Pi t k) : ps) sc
     op ps sc = bindAll (sortP ps) sc
 
     sortP ps = pick [] (reverse ps)
@@ -1353,9 +1392,10 @@ liftPats tm = let (tm', ps) = runState (getPats tm) [] in
                                        v' <- getPats v
                                        sc' <- getPats sc
                                        return (Bind n (Let t' v') sc')
-    getPats (Bind n (Pi t) sc) = do t' <- getPats t
-                                    sc' <- getPats sc
-                                    return (Bind n (Pi t') sc')
+    getPats (Bind n (Pi t k) sc) = do t' <- getPats t
+                                      k' <- getPats k
+                                      sc' <- getPats sc
+                                      return (Bind n (Pi t' k') sc')
     getPats (Bind n (Lam t) sc) = do t' <- getPats t
                                      sc' <- getPats sc
                                      return (Bind n (Lam t') sc')

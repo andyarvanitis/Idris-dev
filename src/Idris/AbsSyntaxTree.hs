@@ -30,6 +30,8 @@ import Data.Either
 import qualified Data.Set as S
 import Data.Word (Word)
 import Data.Maybe (fromMaybe)
+import Data.Traversable (Traversable)
+import Data.Foldable (Foldable)
 
 import Debug.Trace
 
@@ -361,6 +363,7 @@ data Command = Quit
              | CallsWho Name
              | MakeDoc String                      -- IdrisDoc
              | Warranty
+             | PrintDef Name
 
 data Opt = Filename String
          | Quiet
@@ -713,6 +716,7 @@ data PTerm = PQuote Raw
            | PAlternative Bool [PTerm] -- True if only one may work
            | PHidden PTerm -- ^ Irrelevant or hidden pattern
            | PType -- ^ 'Type' type
+           | PUniverse Universe -- ^ Some universe 
            | PGoal FC PTerm Name PTerm
            | PConstant Const -- ^ Builtin types
            | Placeholder
@@ -791,7 +795,7 @@ data PTactic' t = Intro [Name] | Intros | Focus Name
                 | Skip
                 | TFail [ErrorReportPart]
                 | Qed | Abandon
-    deriving (Show, Eq, Functor)
+    deriving (Show, Eq, Functor, Foldable, Traversable)
 {-!
 deriving instance Binary PTactic'
 deriving instance NFData PTactic'
@@ -1049,7 +1053,7 @@ getInferTerm (App (App _ _) tm) = tm
 getInferTerm tm = tm -- error ("getInferTerm " ++ show tm)
 
 getInferType (Bind n b sc) = Bind n (toTy b) $ getInferType sc
-  where toTy (Lam t) = Pi t
+  where toTy (Lam t) = Pi t (TType (UVar 0))
         toTy (PVar t) = PVTy t
         toTy b = b
 getInferType (App (App _ ty) _) = ty
@@ -1380,6 +1384,7 @@ pprintPTerm ppo bnd docArgs infixes = prettySe 10 bnd
           prettyAs =
             foldr (\l -> \r -> l <+> text "," <+> r) empty $ map (prettySe 10 bnd) as
     prettySe p bnd PType = annotate (AnnType "Type" "The type of types") $ text "Type"
+    prettySe p bnd (PUniverse u) = annotate (AnnType (show u) "The type of unique types") $ text (show u) 
     prettySe p bnd (PConstant c) = annotate (AnnConst c) (text (show c))
     -- XXX: add pretty for tactics
     prettySe p bnd (PProof ts) =
@@ -1644,6 +1649,7 @@ instance Sized PTerm where
   size (PDisamb _ tm) = size tm
   size (PNoImplicits tm) = size tm
   size PType = 1
+  size (PUniverse _) = 1
   size (PConstant const) = 1 + size const
   size Placeholder = 1
   size (PDoBlock dos) = 1 + size dos
@@ -1817,3 +1823,4 @@ getErasureInfo ist n =
     case lookupCtxtExact n (idris_optimisation ist) of
         Just (Optimise inacc detagg) -> map fst inacc
         Nothing -> []
+

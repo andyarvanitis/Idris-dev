@@ -180,7 +180,7 @@ elabClauses info fc opts n_in cs = let n = liftname info n_in in
            ctxt <- getContext
            ist <- getIState
            let opt = idris_optimisation ist
-           putIState (ist { idris_patdefs = addDef n (force pdef', force pmissing)
+           putIState (ist { idris_patdefs = addDef n (force pdef, force pmissing)
                                                 (idris_patdefs ist) })
            let caseInfo = CaseInfo (inlinable opts) (dictionary opts)
            case lookupTy n ctxt of
@@ -248,7 +248,7 @@ elabClauses info fc opts n_in cs = let n = liftname info n_in in
                                             force (normalisePats ctxt [] y))
     simple_lhs ctxt t = t
 
-    simple_rt ctxt (p, x, y) = (p, x, force (uniqueBinders p 
+    simple_rt ctxt (p, x, y) = (p, x, force (uniqueBinders p
                                                 (rt_simplify ctxt [] y)))
 
     -- this is so pattern types are in the right form for erasure
@@ -442,6 +442,18 @@ propagateParams i ps t (PRef fc n)
           isImplicit (_ : is) n = isImplicit is n
 propagateParams i ps t x = x
 
+findUnique :: Context -> Env -> Term -> [Name]
+findUnique ctxt env (Bind n b sc)
+   = let rawTy = forgetEnv (map fst env) (binderTy b)
+         uniq = case check ctxt env rawTy of
+                     OK (_, UType UniqueType) -> True
+                     OK (_, UType NullType) -> True
+                     OK (_, UType AllTypes) -> True
+                     _ -> False in
+         if uniq then n : findUnique ctxt ((n, b) : env) sc
+                 else findUnique ctxt ((n, b) : env) sc
+findUnique _ _ _ = []
+
 -- Return the elaborated LHS/RHS, and the original LHS with implicits added
 elabClause :: ElabInfo -> FnOpts -> (Int, PClause) ->
               Idris (Either Term (Term, Term), PTerm)
@@ -499,6 +511,13 @@ elabClause info opts (cnum, PClause fc fname lhs_in withs rhs_in whereblock)
                                then recheckC fc [] lhs_tm
                                else return (lhs_tm, lhs_ty)
         let clhs = normalise ctxt [] clhs_c
+        let borrowed = borrowedNames [] clhs
+
+        -- These are the names we're not allowed to use on the RHS, because
+        -- they're UniqueTypes and borrowed from another function.
+        -- FIXME: There is surely a nicer way than this...
+        when (not (null borrowed)) $
+          logLvl 5 ("Borrowed names on LHS: " ++ show borrowed)
         
         logLvl 3 ("Normalised LHS: " ++ showTmImpls (delabMV i clhs))
 
@@ -513,7 +532,14 @@ elabClause info opts (cnum, PClause fc fname lhs_in withs rhs_in whereblock)
         windex <- getName
         let decls = nub (concatMap declared whereblock)
         let defs = nub (decls ++ concatMap defined whereblock)
-        let newargs = pvars ist lhs_tm
+        let newargs_all = pvars ist lhs_tm
+
+        -- Unique arguments must be passed to the where block explicitly
+        -- (since we can't control "usage" easlily otherwise). Remove them
+        -- from newargs here
+        let uniqargs = findUnique (tt_ctxt ist) [] lhs_tm
+        let newargs = filter (\(n,_) -> n `notElem` uniqargs) newargs_all
+
         let winfo = pinfo info newargs defs windex
         let wb = map (expandParamsD False ist decorate newargs defs) whereblock
 
@@ -572,8 +598,9 @@ elabClause info opts (cnum, PClause fc fname lhs_in withs rhs_in whereblock)
         ctxt <- getContext
         logLvl 5 $ "Rechecking"
         logLvl 6 $ " ==> " ++ show (forget rhs')
+
         (crhs, crhsty) <- if not inf 
-                             then recheckC fc [] rhs'
+                             then recheckC_borrowing True borrowed fc [] rhs'
                              else return (rhs', clhsty)
         logLvl 6 $ " ==> " ++ show crhsty ++ "   against   " ++ show clhsty
         case  converts ctxt [] clhsty crhsty of
@@ -609,6 +636,22 @@ elabClause info opts (cnum, PClause fc fname lhs_in withs rhs_in whereblock)
                                      --      Nothing -> n
                                      --      _ -> MN i (show n)) . l
                      }
+
+    -- Find the variable names which appear under a 'Ownership.Read' so that
+    -- we know they can't be used on the RHS
+    borrowedNames :: [Name] -> Term -> [Name]
+    borrowedNames env (App (App (P _ (NS (UN lend) [owner]) _) _) arg)
+        | owner == txt "Ownership" && 
+          (lend == txt "lend" || lend == txt "Read") = getVs arg
+       where
+         getVs (V i) = [env!!i]
+         getVs (App f a) = nub $ getVs f ++ getVs a
+         getVs _ = []
+    borrowedNames env (App f a) = nub $ borrowedNames env f ++ borrowedNames env a
+    borrowedNames env (Bind n b sc) = nub $ borrowedB b ++ borrowedNames (n:env) sc
+       where borrowedB (Let t v) = nub $ borrowedNames env t ++ borrowedNames env v
+             borrowedB b = borrowedNames env (binderTy b)
+    borrowedNames _ _ = []
 
     mkLHSapp t@(PRef _ _) = trace ("APP " ++ show t) $ PApp fc t []
     mkLHSapp t = t
@@ -717,12 +760,12 @@ elabClause info opts (_, PWith fc fname lhs_in withs wval_in withblock)
         let wargval = getRetTy cwvalN
         let wargtype = getRetTy cwvaltyN
         logLvl 5 ("Abstract over " ++ show wargval ++ " in " ++ show wargtype)
-        let wtype = bindTyArgs Pi (bargs_pre ++
+        let wtype = bindTyArgs (flip Pi (TType (UVar 0))) (bargs_pre ++
                      (sMN 0 "warg", wargtype) :
                      map (abstract (sMN 0 "warg") wargval wargtype) bargs_post)
                      (substTerm wargval (P Bound (sMN 0 "warg") wargtype) ret_ty)
         logLvl 5 ("New function type " ++ show wtype)
-        let wname = sMN windex (show fname)
+        let wname = SN (WithN windex fname)
 
         let imps = getImps wtype -- add to implicits context
         putIState (i { idris_implicits = addDef wname imps (idris_implicits i) })
@@ -765,7 +808,7 @@ elabClause info opts (_, PWith fc fname lhs_in withs wval_in withblock)
         (crhs, crhsty) <- recheckC fc [] rhs'
         return $ (Right (clhs, crhs), lhs)
   where
-    getImps (Bind n (Pi _) t) = pexp Placeholder : getImps t
+    getImps (Bind n (Pi _ _) t) = pexp Placeholder : getImps t
     getImps _ = []
 
     mkAuxC wname lhs ns ns' (PClauses fc o n cs)

@@ -23,9 +23,11 @@ import Control.Exception
 import Control.Monad.Trans
 import Control.Monad.Trans.State.Strict
 import Control.Monad.Trans.Error
-import Control.Monad
+import Control.Monad hiding (forM)
 import Data.Maybe
 import Data.Bits
+import Data.Traversable (forM)
+import Data.Time.Clock.POSIX (getPOSIXTime)
 import qualified Data.Map as M
 
 #ifdef IDRIS_FFI
@@ -49,8 +51,9 @@ readMay s = case reads s of
 
 data Lazy = Delayed ExecEnv Context Term | Forced ExecVal deriving Show
 
-newtype ExecState = ExecState { exec_dynamic_libs :: [DynamicLib] -- ^ Dynamic libs from idris monad
-                              }
+data ExecState = ExecState { exec_dynamic_libs :: [DynamicLib] -- ^ Dynamic libs from idris monad
+                           , binderNames :: [Name] -- ^ Used to uniquify binders when converting to TT
+                           }
 
 data ExecVal = EP NameType Name ExecVal
              | EV Int
@@ -78,11 +81,12 @@ instance Show ExecVal where
 toTT :: ExecVal -> Exec Term
 toTT (EP nt n ty) = (P nt n) <$> (toTT ty)
 toTT (EV i) = return $ V i
-toTT (EBind n b body) = do body' <- body $ EP Bound n EErased
+toTT (EBind n b body) = do n' <- newN n
+                           body' <- body $ EP Bound n' EErased
                            b' <- fixBinder b
-                           Bind n b' <$> toTT body'
+                           Bind n' b' <$> toTT body'
     where fixBinder (Lam t)       = Lam     <$> toTT t
-          fixBinder (Pi t)        = Pi      <$> toTT t
+          fixBinder (Pi t k)      = Pi      <$> toTT t <*> toTT k
           fixBinder (Let t1 t2)   = Let     <$> toTT t1 <*> toTT t2
           fixBinder (NLet t1 t2)  = NLet    <$> toTT t1 <*> toTT t2
           fixBinder (Hole t)      = Hole    <$> toTT t
@@ -90,6 +94,10 @@ toTT (EBind n b body) = do body' <- body $ EP Bound n EErased
           fixBinder (Guess t1 t2) = Guess   <$> toTT t1 <*> toTT t2
           fixBinder (PVar t)      = PVar    <$> toTT t
           fixBinder (PVTy t)      = PVTy    <$> toTT t
+          newN n = do (ExecState hs ns) <- lift get
+                      let n' = uniqueName n ns
+                      lift (put (ExecState hs (n':ns)))
+                      return n'
 toTT (EApp e1 e2) = do e1' <- toTT e1
                        e2' <- toTT e2
                        return $ App e1' e2'
@@ -113,7 +121,7 @@ mkEApp f (a:args) = mkEApp (EApp f a) args
 
 initState :: Idris ExecState
 initState = do ist <- getIState
-               return $ ExecState (idris_dynamic_libs ist)
+               return $ ExecState (idris_dynamic_libs ist) []
 
 type Exec = ErrorT Err (StateT ExecState IO)
 
@@ -144,7 +152,7 @@ execute tm = do est <- initState
                   Right tm' -> return tm'
 
 ioWrap :: ExecVal -> ExecVal
-ioWrap tm = mkEApp (EP (DCon 0 2) (sUN "prim__IO") EErased) [EErased, tm]
+ioWrap tm = mkEApp (EP (DCon 0 2 False) (sUN "prim__IO") EErased) [EErased, tm]
 
 ioUnit :: ExecVal
 ioUnit = ioWrap (EP Ref unitCon EErased)
@@ -163,21 +171,22 @@ doExec env ctxt p@(P Ref n ty) =
              doExec env ctxt tm
          [CaseOp _ _ _ _ _ (CaseDefs _ (ns, sc) _ _)] -> return (EP Ref n EErased)
          [] -> execFail . Msg $ "Could not find " ++ show n ++ " in definitions."
-         thing -> trace (take 200 $ "got to " ++ show thing ++ " lookup up " ++ show n) $ undefined
+         other | length other > 1 -> execFail . Msg $ "Multiple definitions found for " ++ show n
+               | otherwise        -> execFail . Msg . take 500 $ "got to " ++ show other ++ " lookup up " ++ show n
 doExec env ctxt p@(P Bound n ty) =
   case lookup n env of
     Nothing -> execFail . Msg $ "not found"
     Just tm -> return tm
-doExec env ctxt (P (DCon a b) n _) = return (EP (DCon a b) n EErased)
+doExec env ctxt (P (DCon a b u) n _) = return (EP (DCon a b u) n EErased)
 doExec env ctxt (P (TCon a b) n _) = return (EP (TCon a b) n EErased)
 doExec env ctxt v@(V i) | i < length env = return (snd (env !! i))
                         | otherwise      = execFail . Msg $ "env too small"
 doExec env ctxt (Bind n (Let t v) body) = do v' <- doExec env ctxt v
                                              doExec ((n, v'):env) ctxt body
 doExec env ctxt (Bind n (NLet t v) body) = trace "NLet" $ undefined
-doExec env ctxt tm@(Bind n b body) = return $
-                                     EBind n (fmap (\_->EErased) b)
-                                           (\arg -> doExec ((n, arg):env) ctxt body)
+doExec env ctxt tm@(Bind n b body) = do b' <- forM b (doExec env ctxt)
+                                        return $
+                                          EBind n b' (\arg -> doExec ((n, arg):env) ctxt body)
 doExec env ctxt a@(App _ _) =
   do let (f, args) = unApply a
      f' <- doExec env ctxt f
@@ -250,6 +259,10 @@ execApp env ctxt (EP _ fp _) (_:fn:_:handle:_:rest)
                       "The argument to idris_readStr should be a handle, but it was " ++
                       show handle ++
                       ". Are all cases covered?"
+execApp  env ctxt (EP _ fp _) (_:fn:rest)
+    | fp == mkfprim,
+      Just (FFun "idris_time" _ _) <- foreignFromTT fn
+           = do execIO $ fmap (ioWrap . EConstant . I . round) getPOSIXTime
 execApp env ctxt (EP _ fp _) (_:fn:fileStr:modeStr:rest)
     | fp == mkfprim,
       Just (FFun "fileOpen" _ _) <- foreignFromTT fn
@@ -265,7 +278,9 @@ execApp env ctxt (EP _ fp _) (_:fn:fileStr:modeStr:rest)
                                              "r+" -> Right ReadWriteMode
                                              _    -> Left ("Invalid mode for " ++ f ++ ": " ++ mode)
                                    case fmap (openFile f) m of
-                                     Right h -> do h' <- h; return $ Right (ioWrap (EHandle h'), tail rest)
+                                     Right h -> do h' <- h
+                                                   hSetBinaryMode h' True
+                                                   return $ Right (ioWrap (EHandle h'), tail rest)
                                      Left err -> return $ Left err)
                                (\e -> let _ = ( e::SomeException)
                                       in return $ Right (ioWrap (EPtr nullPtr), tail rest))
@@ -340,7 +355,7 @@ execApp env ctxt f@(EP _ fp _) args@(ty:fn:xs) | fp == mkfprim
                    Just r -> return (mkEApp r xs')
         Nothing -> return (mkEApp f args)
 
-execApp env ctxt c@(EP (DCon _ arity) n _) args =
+execApp env ctxt c@(EP (DCon _ arity _) n _) args =
     do let args' = take arity args
        let restArgs = drop arity args
        execApp env ctxt (mkEApp c args') restArgs
@@ -434,7 +449,7 @@ execCase' :: ExecEnv -> Context -> [(Name, ExecVal)] -> SC -> Exec (Maybe ExecVa
 execCase' env ctxt amap (UnmatchedCase _) = return Nothing
 execCase' env ctxt amap (STerm tm) =
     Just <$> doExec (map (\(n, v) -> (n, v)) amap ++ env) ctxt tm
-execCase' env ctxt amap (Case n alts) | Just tm <- lookup n amap =
+execCase' env ctxt amap (Case sh n alts) | Just tm <- lookup n amap =
        case chooseAlt tm alts of
          Just (newCase, newBindings) ->
              let amap' = newBindings ++ (filter (\(x,_) -> not (elem x (map fst newBindings))) amap) in
@@ -442,7 +457,15 @@ execCase' env ctxt amap (Case n alts) | Just tm <- lookup n amap =
          Nothing -> return Nothing
 
 chooseAlt :: ExecVal -> [CaseAlt] -> Maybe (SC, [(Name, ExecVal)])
-chooseAlt _ (DefaultCase sc : alts) = Just (sc, [])
+chooseAlt tm (DefaultCase sc : alts) | ok tm = Just (sc, [])
+                                     | otherwise = Nothing
+  where -- Default cases should only work on applications of constructors or on constants
+        ok (EApp f x) = ok f
+        ok (EP Bound _ _) = False
+        ok (EP Ref _ _) = False
+        ok _ = True
+
+
 chooseAlt (EConstant c) (ConstCase c' sc : alts) | c == c' = Just (sc, [])
 chooseAlt tm (ConCase n i ns sc : alts) | ((EP _ cn _), args) <- unApplyV tm
                                         , cn == n = Just (sc, zip ns args)

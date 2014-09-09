@@ -1,5 +1,5 @@
 Name:           idris
-Version:        0.9.14.1
+Version:        0.9.14.2
 License:        BSD3
 License-file:   LICENSE
 Author:         Edwin Brady
@@ -523,6 +523,16 @@ Extra-source-files:
                        test/tutorial006/*.idr
                        test/tutorial006/expected
 
+                       test/unique001/run
+                       test/unique001/*.idr
+                       test/unique001/expected
+                       test/unique002/run
+                       test/unique002/*.idr
+                       test/unique002/expected
+                       test/unique003/run
+                       test/unique003/*.idr
+                       test/unique003/expected
+
 source-repository head
   type:     git
   location: git://github.com/idris-lang/Idris-dev.git
@@ -651,6 +661,7 @@ Library
                 , IRTS.Java.Mangling
                 , IRTS.Java.Pom
                 , IRTS.Lang
+                , IRTS.LangOpts
                 , IRTS.Simplified
                 , IRTS.System
 
@@ -706,8 +717,10 @@ Library
                 , xml
                 , deepseq
                 , zlib
-                , optparse-applicative >= 0.8
+                , optparse-applicative >= 0.10
   Extensions:     MultiParamTypeClasses
+                , DeriveFoldable
+                , DeriveTraversable
                 , FunctionalDependencies
                 , FlexibleContexts
                 , FlexibleInstances
@@ -777,3 +790,28 @@ Executable idris-c
   ghc-prof-options: -auto-all -caf-all
   ghc-options:      -threaded -rtsopts -funbox-strict-fields
 
+Executable idris-javascript
+  Main-is:        Main.hs
+  hs-source-dirs: codegen/idris-javascript
+
+  Build-depends:  idris
+                , base
+                , filepath
+                , haskeline >= 0.7
+                , transformers
+
+  ghc-prof-options: -auto-all -caf-all
+  ghc-options:      -threaded -rtsopts -funbox-strict-fields
+
+Executable idris-node
+  Main-is:        Main.hs
+  hs-source-dirs: codegen/idris-node
+
+  Build-depends:  idris
+                , base
+                , filepath
+                , haskeline >= 0.7
+                , transformers
+
+  ghc-prof-options: -auto-all -caf-all
+  ghc-options:      -threaded -rtsopts -funbox-strict-fields

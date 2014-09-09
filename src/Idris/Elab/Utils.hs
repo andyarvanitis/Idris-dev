@@ -13,6 +13,7 @@ import Idris.Core.Evaluate
 import Idris.Core.Typecheck
 
 import Control.Applicative hiding (Const)
+import Control.Monad.State
 import Control.Monad
 import Data.List
 
@@ -20,10 +21,12 @@ import Debug.Trace
 
 import qualified Data.Map as Map
 
-recheckC fc env t
+recheckC = recheckC_borrowing False [] 
+
+recheckC_borrowing uniq_check bs fc env t
     = do -- t' <- applyOpts (forget t) (doesn't work, or speed things up...)
          ctxt <- getContext
-         (tm, ty, cs) <- tclift $ case recheck ctxt env (forget t) t of
+         (tm, ty, cs) <- tclift $ case recheck_borrowing uniq_check bs ctxt env (forget t) t of
                                    Error e -> tfail (At fc e)
                                    OK x -> return x
          addConstraints fc cs
@@ -44,7 +47,7 @@ checkAddDef add toplvl fc ((n, (i, top, t)) : ns)
 -- Get the list of (index, name) of inaccessible arguments from an elaborated
 -- type
 inaccessibleImps :: Int -> Type -> [Bool] -> [(Int, Name)]
-inaccessibleImps i (Bind n (Pi t) sc) (inacc : ins)
+inaccessibleImps i (Bind n (Pi t _) sc) (inacc : ins)
     | inacc = (i, n) : inaccessibleImps (i + 1) sc ins
     | otherwise = inaccessibleImps (i + 1) sc ins
 inaccessibleImps _ _ _ = []
@@ -150,10 +153,10 @@ psolve tm = return ()
 pvars ist (Bind n (PVar t) sc) = (n, delab ist t) : pvars ist sc
 pvars ist _ = []
 
-getFixedInType i env (PExp _ _ _ _ : is) (Bind n (Pi t) sc)
+getFixedInType i env (PExp _ _ _ _ : is) (Bind n (Pi t _) sc)
     = nub $ getFixedInType i env [] t ++
             getFixedInType i (n : env) is (instantiate (P Bound n t) sc)
-getFixedInType i env (_ : is) (Bind n (Pi t) sc)
+getFixedInType i env (_ : is) (Bind n (Pi t _) sc)
     = getFixedInType i (n : env) is (instantiate (P Bound n t) sc)
 getFixedInType i env is tm@(App f a)
     | (P _ tn _, args) <- unApply tm
@@ -167,7 +170,7 @@ getFixedInType i env is tm@(App f a)
                         getFixedInType i env is a
 getFixedInType i _ _ _ = []
 
-getFlexInType i env ps (Bind n (Pi t) sc)
+getFlexInType i env ps (Bind n (Pi t _) sc)
     = nub $ (if (not (n `elem` ps)) then getFlexInType i env ps t else []) ++
             getFlexInType i (n : env) ps (instantiate (P Bound n t) sc)
 getFlexInType i env ps tm@(App f a)
@@ -203,3 +206,33 @@ paramNames args env (p : ps)
                                         else paramNames args env ps
                           _ -> paramNames args env ps
    | otherwise = paramNames args env ps
+
+getUniqueUsed :: Context -> Term -> [Name]
+getUniqueUsed ctxt tm = execState (getUniq [] [] tm) []
+  where
+    getUniq :: Env -> [(Name, Bool)] -> Term -> State [Name] () 
+    getUniq env us (Bind n b sc)
+       = let uniq = case check ctxt env (forgetEnv (map fst env) (binderTy b)) of
+                         OK (_, UType UniqueType) -> True
+                         OK (_, UType NullType) -> True
+                         OK (_, UType AllTypes) -> True
+                         _ -> False in
+             do getUniqB env us b
+                getUniq ((n,b):env) ((n, uniq):us) sc
+    getUniq env us (App f a) = do getUniq env us f; getUniq env us a
+    getUniq env us (V i)
+       | i < length us = if snd (us!!i) then use (fst (us!!i)) else return ()
+    getUniq env us (P _ n _)
+       | Just u <- lookup n us = if u then use n else return ()
+    getUniq env us _ = return ()
+
+    use n = do ns <- get; put (n : ns)
+
+    getUniqB env us (Let t v) = do getUniq env us t; getUniq env us v
+    getUniqB env us (Guess t v) = do getUniq env us t; getUniq env us v
+    getUniqB env us (Pi t v) = do getUniq env us t; getUniq env us v
+    getUniqB env us (NLet t v) = do getUniq env us t; getUniq env us v
+    getUniqB env us b = getUniq env us (binderTy b)
+
+
+

@@ -49,7 +49,7 @@ import Data.List.Split (splitOn)
 import Util.Pretty(pretty, text)
 
 buildType :: ElabInfo -> SyntaxInfo -> FC -> FnOpts -> Name -> PTerm -> 
-             Idris (Type, PTerm, [(Int, Name)])
+             Idris (Type, Type, PTerm, [(Int, Name)])
 buildType info syn fc opts n ty' = do
          ctxt <- getContext
          i <- getIState
@@ -80,7 +80,7 @@ buildType info syn fc opts n ty' = do
          logLvl 5 $ "Rechecking"
          logLvl 6 $ show tyT
          logLvl 10 $ "Elaborated to " ++ showEnvDbg [] tyT
-         (cty, _)   <- recheckC fc [] tyT
+         (cty, ckind)   <- recheckC fc [] tyT
 
          -- record the implicit and inaccessible arguments
          i <- getIState
@@ -99,13 +99,13 @@ buildType info syn fc opts n ty' = do
              setFnInfo n fninfo
              addIBC (IBCFnInfo n fninfo)
 
-         return (cty, ty, inacc)
+         return (cty, ckind, ty, inacc)
   where
-    patToImp (Bind n (PVar t) sc) = Bind n (Pi t) (patToImp sc)
+    patToImp (Bind n (PVar t) sc) = Bind n (Pi t (TType (UVar 0))) (patToImp sc)
     patToImp (Bind n b sc) = Bind n b (patToImp sc)
     patToImp t = t
 
-    param_pos i ns (Bind n (Pi t) sc) 
+    param_pos i ns (Bind n (Pi t _) sc) 
         | n `elem` ns = i : param_pos (i + 1) ns sc
         | otherwise = param_pos (i + 1) ns sc
     param_pos i ns t = []
@@ -121,7 +121,7 @@ elabType' :: Bool -> -- normalise it
 elabType' norm info syn doc argDocs fc opts n ty' = {- let ty' = piBind (params info) ty_in
                                                        n  = liftname info n_in in    -}
       do checkUndefined fc n
-         (cty, ty, inacc) <- buildType info syn fc opts n ty'
+         (cty, _, ty, inacc) <- buildType info syn fc opts n ty'
 
          addStatics n cty ty
          let nty = cty -- normalise ctxt [] cty
@@ -189,7 +189,7 @@ elabType' norm info syn doc argDocs fc opts n ty' = {- let ty' = piBind (params 
     lst = txt "List"
     errrep = txt "ErrorReportPart"
 
-    tyIsHandler (Bind _ (Pi (P _ (NS (UN e) ns1) _))
+    tyIsHandler (Bind _ (Pi (P _ (NS (UN e) ns1) _) _)
                         (App (P _ (NS (UN m) ns2) _)
                              (App (P _ (NS (UN l) ns3) _)
                                   (P _ (NS (UN r) ns4) _))))
