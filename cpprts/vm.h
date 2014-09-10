@@ -20,10 +20,9 @@ public:
 };
 
 //---------------------------------------------------------------------------------------
-using ArgsPair = pair<IndexType,IndexType>;
 
-using CallStack = stack<Func>;
-using ArgStack = stack<ArgsPair>;
+using CallPair = pair<Func,IndexType>;
+using CallStack = stack<CallPair>;
 
 //---------------------------------------------------------------------------------------
 struct VirtualMachine {
@@ -32,7 +31,6 @@ struct VirtualMachine {
   IndexType valstack_base = 0;
   Value ret = nullptr;
   CallStack callstack;
-  ArgStack argstack;
 };
 
 //---------------------------------------------------------------------------------------
@@ -43,12 +41,14 @@ void slide(shared_ptr<VirtualMachine>& vm,
 void project(shared_ptr<VirtualMachine>& vm,
              const Value& value, const IndexType loc, const int arity);
 
-void vmcall(shared_ptr<VirtualMachine>& vm,
-            const Func& fn, const ArgsPair& args);
+void vm_call(shared_ptr<VirtualMachine>& vm,
+             const Func& fn, const IndexType arg);
+
+void vm_tailcall(shared_ptr<VirtualMachine>& vm,
+                const Func& fn, const IndexType arg);
 
 //---------------------------------------------------------------------------------------
 
 } // namespace idris
 
 #endif // __idris_cpp_runtime_vm_h_
-

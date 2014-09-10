@@ -69,7 +69,7 @@ data Cpp = CppRaw String
         | CppNum CppNum
         | CppWord CppWord
         | CppAssign Cpp Cpp
-        | CppAlloc String (Maybe Cpp)
+        | CppAlloc (Maybe String) String (Maybe Cpp)
         | CppIndex Cpp Cpp
         | CppSwitch Cpp [(Cpp, Cpp)] (Maybe Cpp)
         | CppCond [(Cpp, Cpp)]
@@ -260,18 +260,23 @@ compileCpp' indent (CppNum num)
 compileCpp' indent (CppAssign lhs rhs) =
   compileCpp' indent lhs `T.append` " = " `T.append` compileCpp' indent rhs
 
-compileCpp' 0 (CppAlloc name (Just val@(CppNew _ _))) =
+compileCpp' 0 (CppAlloc _ name (Just val@(CppNew _ _))) =
   T.pack name
   `T.append` " = "
   `T.append` compileCpp' 0 val
   `T.append` ";\n"
 
-compileCpp' indent (CppAlloc name val) =
-    let expr = maybe "" (compileCpp' indent) val
-    in case val of (Nothing)               -> ""
-                   (Just (CppFunction _ _)) -> (if name == "main" then "int " else "void ") 
-                                                `T.append` T.pack name `T.append`  expr
-                   (_)                       -> "auto " `T.append` T.pack name `T.append` " = " `T.append` expr
+compileCpp' indent (CppAlloc typename name val) =
+    case val of Nothing   -> typ `T.append` T.pack name
+                Just expr -> typ `T.append` T.pack name `T.append` " = " `T.append` compileCpp' indent expr
+                where 
+                  typ = case typename of Nothing -> T.pack "auto "
+                                         Just t  -> T.pack (t ++ " ")
+    -- let expr = maybe "" (compileCpp' indent) val
+    -- in case val of (Nothing)               -> ""
+    --                (Just (CppFunction _ _)) -> (if name == "main" then "int " else "void ")
+    --                                             `T.append` T.pack name `T.append`  expr
+    --                (_)                       -> "auto " `T.append` T.pack name `T.append` " = " `T.append` expr
 
 compileCpp' indent (CppIndex lhs rhs) =
     compileCpp' indent lhs

@@ -15,7 +15,7 @@ template <typename A, typename... ArgTypes>
 void process_args(shared_ptr<VirtualMachine>& vm, Value& res, const IndexType oldbase,
                   A arg, ArgTypes&&... args) {
 
-  void _idris__123_APPLY0_125_(shared_ptr<VirtualMachine>&,IndexType,IndexType);
+  void _idris__123_APPLY0_125_(shared_ptr<VirtualMachine>&, IndexType);
 
   if (res->getTypeId() == 'C') {
     vm->valstack_top += 1;
@@ -23,13 +23,12 @@ void process_args(shared_ptr<VirtualMachine>& vm, Value& res, const IndexType ol
     vm->valstack[vm->valstack_top + 1] = box<typename FromNative<A>::type>(arg);
     slide(vm, 2);
     vm->valstack_top = vm->valstack_base + 2;
-    vmcall(vm, _idris__123_APPLY0_125_, {oldbase,0});
+    _idris__123_APPLY0_125_(vm, oldbase);
     while (vm->callstack.size()) {
-      auto func = vm->callstack.top();
+      auto func = get<0>(vm->callstack.top());
+      auto farg = get<1>(vm->callstack.top());
       vm->callstack.pop();
-      auto fargs = vm->argstack.top();
-      vm->argstack.pop();
-      func(vm, get<0>(fargs),get<1>(fargs));
+      func(vm, farg);
     }
     res = vm->ret;
   }
@@ -50,19 +49,16 @@ RetType proxy_function(const weak_ptr<VirtualMachine>& vm_weak,
   auto con = con_weak.lock();
   //
   if (vm and con) {
-    // Create (empty) private stacks and use them for this context.
+    // Create (empty) private stack and use it for this context.
     CallStack callstack;
-    ArgStack argstack;
     vm->callstack.swap(callstack);
-    vm->argstack.swap(argstack);
   
     auto res = con;
     process_args(vm, res, oldbase, forward<ArgTypes>(args)...);
     auto result = vm->ret;
-  
-    // Restore the original stacks
+
+    // Restore the original stack
     vm->callstack.swap(callstack);
-    vm->argstack.swap(argstack);
 
     return unbox<typename FromNative<RetType>::type>(result);
 

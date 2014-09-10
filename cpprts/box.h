@@ -68,7 +68,7 @@ inline auto unbox(const Value& boxedValue) -> const decltype(T::value) & {
 struct VirtualMachine;
 
 using IndexType = size_t;
-using Func = void (*)(shared_ptr<VirtualMachine>&, IndexType, IndexType);
+using Func = void (*)(shared_ptr<VirtualMachine>&, IndexType);
 
 struct Constructor {
   

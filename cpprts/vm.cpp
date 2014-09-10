@@ -22,11 +22,22 @@ void project(shared_ptr<VirtualMachine>& vm,
   }
 }
 
-void vmcall(shared_ptr<VirtualMachine>& vm,
-            const Func& fn, const ArgsPair& args) {
-   vm->callstack.push(fn);
-   vm->argstack.push(args);
+void vm_call(shared_ptr<VirtualMachine>& vm,
+             const Func& fn, const IndexType arg) {
+  fn(vm, arg);
+
+  while (vm->callstack.size() > 0) {
+    auto func = get<0>(vm->callstack.top());
+    auto arg  = get<1>(vm->callstack.top());
+    vm->callstack.pop();
+    func(vm, arg);
+  };
+
+}
+
+void vm_tailcall(shared_ptr<VirtualMachine>& vm,
+                 const Func& fn, const IndexType arg) {
+   vm->callstack.push({fn,arg});
 }
 
 } // namespace idris
-
