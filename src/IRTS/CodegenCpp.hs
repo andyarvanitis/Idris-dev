@@ -1058,7 +1058,7 @@ translateBC info bc
   | SLIDE n               <- bc = cppSLIDE info n
   | REBASE                <- bc = cppREBASE info
   | RESERVE n             <- bc = cppRESERVE info n
-  | MKCON r t rs          <- bc = cppMKCON info r t rs
+  | MKCON r _ t rs        <- bc = cppMKCON info r t rs
   | CASE s r c d          <- bc = cppCASE info s r c d
   | CONSTCASE r c d       <- bc = cppCONSTCASE info r c d
   | PROJECT r l a         <- bc = cppPROJECT info r l a
