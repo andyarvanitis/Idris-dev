@@ -39,15 +39,15 @@ long long int TypedBoxedValue<'i', int>::asIntegral() const {
 //---------------------------------------------------------------------------------------
 // BigInt
 //---------------------------------------------------------------------------------------
-template struct TypedBoxedValue<'b', long long>;
+template struct TypedBoxedValue<'b', bigint_t>;
 
 template <>
-string TypedBoxedValue<'b', long long>::asString() const {
+string TypedBoxedValue<'b', bigint_t>::asString() const {
   return interpreted_string(value);
 }
 
 template <>
-long long int TypedBoxedValue<'b', long long>::asIntegral() const {
+long long int TypedBoxedValue<'b', bigint_t>::asIntegral() const {
   return value;
 }
 

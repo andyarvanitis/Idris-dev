@@ -60,6 +60,7 @@ Data-files:            idrisdoc/styles.css
                        rts/idris_stdfgn.h
                        rts/libtest.c
                        cpprts/idris_runtime.h
+                       cpprts/bigint.h
                        cpprts/box.h
                        cpprts/callbacks.h
                        cpprts/exceptions.h

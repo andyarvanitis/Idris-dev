@@ -37,6 +37,11 @@ struct FromNative<int> {
 };
 
 template <>
+struct FromNative<bigint_t> {
+  using type = BigInt;
+};
+
+template <>
 struct FromNative<long long> {
   using type = BigInt;
 };

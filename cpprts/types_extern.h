@@ -8,7 +8,7 @@ namespace idris {
 using namespace std;
 
 extern template struct TypedBoxedValue<'i', int>;
-extern template struct TypedBoxedValue<'b', long long>;
+extern template struct TypedBoxedValue<'b', bigint_t>;
 extern template struct TypedBoxedValue<'f', double>;
 extern template struct TypedBoxedValue<'s', string>;
 extern template struct TypedBoxedValue<'c', char32_t>;
