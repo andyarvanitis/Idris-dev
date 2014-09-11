@@ -10,6 +10,7 @@ namespace idris {
 //---------------------------------------------------------------------------------------
 
 using ValueStack = deque<Value>;
+using Func       = void (*)(shared_ptr<VirtualMachine>&, IndexType);
 using CallPair   = pair<Func,IndexType>;
 using CallStack  = stack<CallPair>;
 

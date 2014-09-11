@@ -4,7 +4,6 @@
 #include <memory>
 #include <vector>
 #include <string>
-#include <functional>
 #include <cassert>
 
 namespace idris {
@@ -68,27 +67,17 @@ inline auto unbox(const Value& boxedValue) -> const decltype(T::value) & {
 struct VirtualMachine;
 
 using IndexType = size_t;
-using Func = void (*)(shared_ptr<VirtualMachine>&, IndexType);
 
 struct Constructor {
   
   using Args = vector<Value>;
   
   const size_t tag;
-  const Func function;
   Args args; // non-const to allow unrolled destruction
-
-  template <typename ... ArgTypes>
-  Constructor(const size_t tag, const Func& function, ArgTypes&&... args)
-    : tag(tag)
-    , function(function)
-    , args({args...})
-    {}
 
   template <typename ... ArgTypes>
   Constructor(const size_t tag, ArgTypes&&... args)
     : tag(tag)
-    , function(nullptr)
     , args({args...})
     {}
 

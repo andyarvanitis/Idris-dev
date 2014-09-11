@@ -1,89 +1,31 @@
-{-# LANGUAGE PatternGuards #-}
-{-# LANGUAGE OverloadedStrings #-}
-module IRTS.CodegenCpp (codegenCpp, CppTarget(..)) where
-
-import IRTS.Cpp.AST
+module IRTS.CodegenCpp (codegenCpp) where
 
 import Idris.AbsSyntax hiding (TypeCase)
 import IRTS.Bytecode
 import IRTS.Lang
 import IRTS.Simplified
-import IRTS.CodegenCommon
-import Idris.Core.TT
 import IRTS.System
+import IRTS.CodegenCommon
+import IRTS.Cpp.AST
+import Idris.Core.TT
 import Util.System
 
-import Control.Arrow
-import Control.Monad (mapM)
-import Control.Applicative ((<$>), (<*>), pure)
-import Control.Monad.RWS hiding (mapM)
-import Control.Monad.State
-import Data.Char
 import Numeric
-import Data.List
-import Data.Maybe
-import Data.Word
-import Data.Traversable hiding (mapM)
-import Data.Bits
-import System.IO
+import Data.Char
+import Data.List (intercalate)
 import System.Process
 import System.Exit
+import System.IO
 import System.Directory
+import Control.Monad.State
+import Control.Arrow
+import Control.Applicative ((<$>), (<*>), pure)
 
-import qualified Data.Map.Strict as M
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Text.Printf as PF
 
-
-data CompileInfo = CompileInfo { compileInfoApplyCases  :: [Int]
-                               , compileInfoEvalCases   :: [Int]
-                               , compileInfoNeedsBigInt :: Bool
-                               }
-
-
-initCompileInfo :: [(Name, [BC])] -> CompileInfo
-initCompileInfo bc =
-  CompileInfo (collectCases "APPLY" bc) (collectCases "EVAL" bc) (lookupBigInt bc)
-  where
-    lookupBigInt :: [(Name, [BC])] -> Bool
-    lookupBigInt = any (needsBigInt . snd)
-      where
-        needsBigInt :: [BC] -> Bool
-        needsBigInt bc = or $ map testBCForBigInt bc
-          where
-            testBCForBigInt :: BC -> Bool
-            testBCForBigInt (ASSIGNCONST _ c)  =
-              testConstForBigInt c
-
-            testBCForBigInt (CONSTCASE _ c d) =
-                 maybe False needsBigInt d
-              || (or $ map (needsBigInt . snd) c)
-              || (or $ map (testConstForBigInt . fst) c)
-
-            testBCForBigInt _ = False
-
-            testConstForBigInt :: Const -> Bool
-            testConstForBigInt (BI _)  = True
-            testConstForBigInt (B64 _) = True
-            testConstForBigInt _       = False
-
-
-    collectCases :: String ->  [(Name, [BC])] -> [Int]
-    collectCases fun bc = getCases $ findFunction fun bc
-
-    findFunction :: String -> [(Name, [BC])] -> [BC]
-    findFunction f ((MN 0 fun, bc):_)
-      | fun == txt f = bc
-    findFunction f (_:bc) = findFunction f bc
-
-    getCases :: [BC] -> [Int]
-    getCases = concatMap analyze
-      where
-        analyze :: BC -> [Int]
-        analyze (CASE _ _ b _) = map fst b
-        analyze _              = []
-
+data CompileInfo = CompileInfo { compileInfoNeedsBigInt :: Bool } -- TODO: not used right now
 
 data CppTarget = Cpp deriving Eq
 
@@ -118,25 +60,12 @@ codegenCpp_all ::
 codegenCpp_all definitions outputType filename includes objs libs flags dbg = do
   let bytecode = map toBC definitions
   let decls = concatMap toDecl (map fst bytecode)
-  -- let info = initCompileInfo bytecode
-  let cpp = concatMap (toCpp (CompileInfo [] [] True)) bytecode
-  -- let cpp = concatMap (translateDecl info) bytecode
-  -- let full = concatMap processFunction cpp
-  --let code = deadCodeElim full
-  -- let (cons, opt) = optimizeConstructors full
-  let (header, rt) = ("", "")
-  
-  path       <- (++) <$> getDataDir <*> (pure "/cpprts/")
-                
+  let cpp = concatMap (toCpp (CompileInfo True)) bytecode
+  let (header, rt) = ("", "")  
+  path <- (++) <$> getDataDir <*> (pure "/cpprts/")                
   let cppout = (  T.pack (headers includes)
                   `T.append` namespaceBegin
                   `T.append` T.pack decls
-                  -- `T.append` T.concat (map varDecl opt)
-                  -- `T.append` T.pack "\n\n"
-                  -- `T.append` T.concat (map varDecl cons)
-                  `T.append` T.pack "\n\n"
-                  -- `T.append` T.concat (map compileCpp opt)
-                  -- `T.append` T.concat (map compileCpp cons)
                   `T.append` T.concat (map compileCpp cpp)
                   `T.append` namespaceEnd
                )
@@ -169,7 +98,6 @@ codegenCpp_all definitions outputType filename includes objs libs flags dbg = do
             when (exit /= ExitSuccess) $
               putStrLn ("FAILURE: " ++ cc)
     where
-
       headers xs = concatMap (\h -> let header = case h of ('<':_) -> h
                                                            _ -> "\"" ++ h ++ "\"" in                                                      
                                     "#include " ++ header ++ "\n")
@@ -190,68 +118,8 @@ codegenCpp_all definitions outputType filename includes objs libs flags dbg = do
       ccDbg TRACE = "-O2"
       ccDbg _ = "-O2"      
 
-      -- varDecl :: Cpp -> T.Text
-      -- varDecl (CppAlloc name (Just (CppFunction _ _))) = T.pack $ "void " ++ name ++ "(" ++ (intercalate "," cppFUNCPARMS) ++ ");\n"
-      -- varDecl (CppAlloc name _) = T.pack $ "extern Value " ++ name ++ ";\n"
-      -- varDecl _ = ""
-
-
       toDecl :: Name -> String
       toDecl f = "void " ++ translateName f ++ "(" ++ (intercalate ", " cppFUNCPARMS) ++ ");\n"
-
-      -- deadCodeElim :: [Cpp] -> [Cpp]
-      -- deadCodeElim cpp = concatMap collectFunctions cpp
-      --   where
-      --     collectFunctions :: Cpp -> [Cpp]
-      --     collectFunctions fun@(CppAlloc name _)
-      --       | name == translateName (sMN 0 "runMain") = [fun]
-      --
-      --     collectFunctions fun@(CppAlloc name (Just (CppFunction _ body))) =
-      --       let invokations = sum $ map (
-      --               \x -> execState (countInvokations name x) 0
-      --             ) cpp
-      --        in if invokations == 0
-      --              then []
-      --              else [fun]
-      --
-      --     countInvokations :: String -> Cpp -> State Int ()
-      --     countInvokations name (CppAlloc _ (Just (CppFunction _ body))) =
-      --       countInvokations name body
-      --
-      --     countInvokations name (CppSeq seq) =
-      --       void $ traverse (countInvokations name) seq
-      --
-      --     countInvokations name (CppAssign _ rhs) =
-      --       countInvokations name rhs
-      --
-      --     countInvokations name (CppCond conds) =
-      --       void $ traverse (
-      --           runKleisli $ arr id *** Kleisli (countInvokations name)
-      --         ) conds
-      --
-      --     countInvokations name (CppSwitch _ conds def) =
-      --       void $ traverse (
-      --         runKleisli $ arr id *** Kleisli (countInvokations name)
-      --       ) conds >> traverse (countInvokations name) def
-      --
-      --     countInvokations name (CppApp lhs rhs) =
-      --       void $ countInvokations name lhs >> traverse (countInvokations name) rhs
-      --
-      --     countInvokations name (CppNew _ args) =
-      --       void $ traverse (countInvokations name) args
-      --
-      --     countInvokations name (CppArray args) =
-      --       void $ traverse (countInvokations name) args
-      --
-      --     countInvokations name (CppIdent name')
-      --       | name == name' = get >>= put . (+1)
-      --       | otherwise     = return ()
-      --
-      --     countInvokations _ _ = return ()
-
-      -- processFunction :: Cpp -> [Cpp]
-      -- processFunction =
-      --   collectSplitFunctions . (\x -> evalRWS (splitFunction x) () 0)
 
       namespaceBegin :: T.Text
       namespaceBegin = T.pack "namespace idris {\n"
@@ -259,173 +127,6 @@ codegenCpp_all definitions outputType filename includes objs libs flags dbg = do
       namespaceEnd :: T.Text
       namespaceEnd = T.pack "} // namespace idris\n"
 
--- optimizeConstructors :: [Cpp] -> ([Cpp], [Cpp])
--- optimizeConstructors cpp =
---     let (cpp', cons) = runState (traverse optimizeConstructor' cpp) M.empty in
---         (map (allocCon . snd) (M.toList cons), cpp')
---   where
---     allocCon :: (String, Cpp) -> Cpp
---     allocCon (name, con) = CppAlloc name (Just con)
---
---     newConstructor :: Int -> String
---     newConstructor n = "_con_" ++ show n
---
---     optimizeConstructor' :: Cpp -> State (M.Map Int (String, Cpp)) Cpp
---     optimizeConstructor' cpp@(CppNew "_con_" [ CppNum (CppInt tag)
---                                            , CppArray []
---                                            , a
---                                            , e
---                                            ]) = do
---       s <- get
---       case M.lookup tag s of
---            Just (i, c) -> return $ CppIdent i
---            Nothing     -> do let n = newConstructor tag
---                              put $ M.insert tag (n, cpp) s
---                              return $ CppIdent n
---
---     optimizeConstructor' (CppSeq seq) =
---       CppSeq <$> traverse optimizeConstructor' seq
---
---     optimizeConstructor' (CppSwitch reg cond def) = do
---       cond' <- traverse (runKleisli $ arr id *** Kleisli optimizeConstructor') cond
---       def'  <- traverse optimizeConstructor' def
---       return $ CppSwitch reg cond' def'
---
---     optimizeConstructor' (CppCond cond) =
---       CppCond <$> traverse (runKleisli $ arr id *** Kleisli optimizeConstructor') cond
---
---     optimizeConstructor' (CppAlloc fun (Just (CppFunction args body))) = do
---       body' <- optimizeConstructor' body
---       return $ CppAlloc fun (Just (CppFunction args body'))
---
---     optimizeConstructor' (CppAssign lhs rhs) = do
---       lhs' <- optimizeConstructor' lhs
---       rhs' <- optimizeConstructor' rhs
---       return $ CppAssign lhs' rhs'
---
---     optimizeConstructor' cpp = return cpp
-
--- collectSplitFunctions :: (Cpp, [(Int,Cpp)]) -> [Cpp]
--- collectSplitFunctions (fun, splits) = map generateSplitFunction splits ++ [fun]
---   where
---     generateSplitFunction :: (Int,Cpp) -> Cpp
---     generateSplitFunction (depth, CppAlloc name fun) =
---       CppAlloc (name ++ "_" ++ show depth) fun
-
--- splitFunction :: Cpp -> RWS () [(Int,Cpp)] Int Cpp
--- splitFunction (CppAlloc name (Just (CppFunction args body@(CppSeq _)))) = do
---   body' <- splitSequence body
---   return $ CppAlloc name (Just (CppFunction args body'))
---     where
---       splitCondition :: Cpp -> RWS () [(Int,Cpp)] Int Cpp
---       splitCondition cpp
---         | CppCond branches <- cpp =
---             CppCond <$> processBranches branches
---         | CppSwitch cond branches def <- cpp =
---             CppSwitch cond <$> (processBranches branches) <*> (traverse splitSequence def)
---         | otherwise = return cpp
---         where
---           processBranches :: [(Cpp,Cpp)] -> RWS () [(Int,Cpp)] Int [(Cpp,Cpp)]
---           processBranches =
---             traverse (runKleisli (arr id *** Kleisli splitSequence))
---
---       splitSequence :: Cpp -> RWS () [(Int, Cpp)] Int Cpp
---       splitSequence cpp@(CppSeq seq) =
---         let (pre,post) = break isCall seq in
---             case post of
---                  []                    -> CppSeq <$> traverse splitCondition seq
---                  [cpp@(CppCond _)]       -> splitCondition cpp
---                  [cpp@(CppSwitch {})] -> splitCondition cpp
---                  [_]                   -> return cpp
---                  (call:rest) -> do
---                    depth <- get
---                    put (depth + 1)
---                    new <- splitFunction (newFun rest)
---                    tell [(depth, new)]
---                    return $ CppSeq (pre ++ (newCall depth : [call]))
---
---       splitSequence cpp = return cpp
---
---       isCall :: Cpp -> Bool
---       isCall (CppApp (CppIdent "vmcall") _) = True
---       isCall _                            = False
---
---       newCall :: Int -> Cpp
---       newCall depth =
---         CppApp (CppIdent "vmcall") [ cppVM
---                                    , CppIdent $ name ++ "_" ++ show depth
---                                    , CppArray [cppOLDBASE, cppMYOLDBASE]
---                                    ]
---
---       newFun :: [Cpp] -> Cpp
---       newFun seq =
---         CppAlloc name (Just $ CppFunction cppFUNCPARMS (CppSeq seq))
---
--- splitFunction cpp = return cpp
-
--- translateDecl :: CompileInfo -> (Name, [BC]) -> [Cpp]
--- translateDecl info (name@(MN 0 fun), bc)
---   | txt "APPLY" == fun || txt "EVAL" == fun =
---          allocCaseFunctions (snd body)
---       ++ [ CppAlloc (
---                translateName name
---            ) (Just $ CppFunction cppFUNCPARMS (
---                CppSeq $ map (translateBC info) (fst body) ++ [
---                  CppCond [ ( (translateReg $ caseReg (snd body)) `cppInstanceOf` "C" `cppAnd` func
---                           , CppApp func [cppVM, cppOLDBASE, cppMYOLDBASE]
---                           )
---                           , ( CppNoop
---                             , CppSeq $ map (translateBC info) (defaultCase (snd body))
---                             )
---                         ]
---                ]
---              )
---            )
---          ]
---   where
---     func = CppProj (cppUNBOX cppCON $ translateReg $ caseReg $ snd body) "function"
---
---     body :: ([BC], [BC])
---     body = break isCase bc
---
---     isCase :: BC -> Bool
---     isCase bc
---       | CASE {} <- bc = True
---       | otherwise          = False
---
---     defaultCase :: [BC] -> [BC]
---     defaultCase ((CASE _ _ _ (Just d)):_) = d
---
---     caseReg :: [BC] -> Reg
---     caseReg ((CASE _ r _ _):_) = r
---
---     allocCaseFunctions :: [BC] -> [Cpp]
---     allocCaseFunctions ((CASE _ _ c _):_) = splitBranches c
---     allocCaseFunctions _                  = []
---
---     splitBranches :: [(Int, [BC])] -> [Cpp]
---     splitBranches = map prepBranch
---
---     prepBranch :: (Int, [BC]) -> Cpp
---     prepBranch (tag, code) =
---       CppAlloc (
---         translateName name ++ "_" ++ show tag
---       ) (Just $ CppFunction cppFUNCPARMS (
---           CppSeq $ map (translateBC info) code
---         )
---       )
---
--- translateDecl info (name, bc) =
---   [ CppAlloc (
---        translateName name
---      ) (Just $ CppFunction cppFUNCPARMS (
---          CppSeq $ map (translateBC info)bc
---        )
---      )
---   ]
-
--- toCpp :: Name -> [BC] -> String
--- toCpp name bc =
 toCpp info (name, bc) =
   [ CppIdent $ "void " ++ translateName name,
     CppFunction cppFUNCPARMS (
@@ -632,7 +333,6 @@ cppTOPBASE :: CompileInfo -> Int -> Cpp
 cppTOPBASE _ 0  = CppAssign cppSTACKTOP cppSTACKBASE
 cppTOPBASE _ n  = CppAssign cppSTACKTOP (CppBinOp "+" cppSTACKBASE (CppNum (CppInt n)))
 
-
 cppBASETOP :: CompileInfo -> Int -> Cpp
 cppBASETOP _ 0 = CppAssign cppSTACKBASE cppSTACKTOP
 cppBASETOP _ n = CppAssign cppSTACKBASE (CppBinOp "+" cppSTACKTOP (CppNum (CppInt n)))
@@ -656,12 +356,6 @@ cppMKCON info r t rs =
       args [] = []        
       args xs = [CppList (map translateReg xs)]
 
-      -- func :: Int -> [Cpp]
-      -- func n
-      --   | n `elem` compileInfoApplyCases info = [CppIdent $ translateName (sMN 0 "APPLY") ++ "_" ++ show n]
-      --   | n `elem` compileInfoEvalCases info  = [CppIdent $ translateName (sMN 0 "EVAL") ++ "_" ++ show n]
-      --   | otherwise = []
-
 cppCASE :: CompileInfo -> Bool -> Reg -> [(Int, [BC])] -> Maybe [BC] -> Cpp
 cppCASE info safe reg cases def =
   CppSwitch (tag safe $ translateReg reg) (
@@ -682,7 +376,6 @@ cppCASE info safe reg cases def =
 
       cppCTAG :: Cpp -> Cpp
       cppCTAG cpp = CppProj (cppUNBOX cppCON cpp) "tag"
-
 
 cppCONSTCASE :: CompileInfo -> Reg -> [(Const, [BC])] -> Maybe [BC] -> Cpp
 cppCONSTCASE info reg cases def =
@@ -750,16 +443,6 @@ cppOP _ reg oper args = CppAssign (translateReg reg) (cppOP' oper)
       | (LSGe ty)   <- op
       , (lhs:rhs:_) <- args = cppBOX cppBOOL $ CppBinOp ">=" (cppUNBOX (cppAType ty) $ translateReg lhs)
                                                              (cppUNBOX (cppAType ty) $ translateReg rhs)
-      -- | (LPlus (ATInt ITChar)) <- op
-      -- , (lhs:rhs:_)            <- args =
-      --     cppCall "fromCharCode" [
-      --       CppBinOp "+" (
-      --         cppCall "charCode" [translateReg lhs]
-      --       ) (
-      --         cppCall "charCode" [translateReg rhs]
-      --       )
-      --     ]
-
       | (LTrunc ITNative (ITFixed IT8)) <- op
       , (arg:_)                               <- args =
           cppBOX (cppWORD 8) $ CppBinOp "&" (cppUNBOX cppINT $ translateReg arg) (CppRaw "0xFFu")
@@ -782,7 +465,6 @@ cppOP _ reg oper args = CppAssign (translateReg reg) (cppOP' oper)
 
       | (LTrunc ITBig ITNative) <- op
       , (arg:_)                 <- args = cppBOX cppINT $ cppStaticCast (cppINT ++ "::type") (cppUNBOX cppBIGINT $ translateReg arg)
-
 
       | (LLSHR ty@(ITFixed _)) <- op
       , (lhs:rhs:_)           <- args = cppOP' (LASHR ty)
@@ -897,8 +579,6 @@ cppOP _ reg oper args = CppAssign (translateReg reg) (cppOP' oper)
               CppTernary (cppAnd (translateReg arg) (CppPreOp "!" (cppMeth str "empty" [])))
                          (cppBOX cppCHAR $ cppCall "utf8_head" [str])
                          CppNull
-                         --(cppBOX cppCHAR $ CppChar (cppCodepoint 0))
-
       | LStrRev     <- op
       , (arg:_)     <- args = cppBOX cppSTRING $ cppCall "reverse" [cppUNBOX cppSTRING $ translateReg arg]
 
@@ -911,7 +591,6 @@ cppOP _ reg oper args = CppAssign (translateReg reg) (cppOP' oper)
               CppTernary (cppAnd (translateReg arg) (cppGreaterThan (strLen str) cppOne))
                          (cppBOX cppSTRING $ cppCall "utf8_tail" [str])
                          (cppBOX cppSTRING $ CppString "")
-
       | LReadStr    <- op
       , (arg:_)     <- args = cppBOX cppSTRING $ cppCall "freadStr" [cppUNBOX cppManagedPtr $ translateReg arg]
 
@@ -1063,10 +742,8 @@ cppAType (ATInt (ITFixed IT32)) = cppWORD 32
 cppAType (ATInt (ITFixed IT64)) = cppWORD 64
 cppAType (ty)                   = "UNKNOWN TYPE: " ++ show ty
 
-
 cppCodepoint :: Int -> String
 cppCodepoint c = PF.printf "\\U%.8X" c
-
 
 translateBC :: CompileInfo -> BC -> Cpp
 translateBC info bc
@@ -1091,4 +768,3 @@ translateBC info bc
   | OP r o a              <- bc = cppOP info r o a
   | ERROR e               <- bc = cppERROR info e
   | otherwise                   = CppRaw $ "//" ++ show bc
-
