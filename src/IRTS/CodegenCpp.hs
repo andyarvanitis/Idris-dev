@@ -429,7 +429,9 @@ codegenCpp_all definitions outputType filename includes objs libs flags dbg = do
 toCpp info (name, bc) =
   [ CppIdent $ "void " ++ translateName name,
     CppFunction cppFUNCPARMS (
-      CppSeq $ CppAlloc (Just $ cppBASETYPENAME ++ " __unused") cppMYOLDBASENAME Nothing : map (translateBC info)bc
+      CppSeq $ CppAlloc (Just cppBASETYPENAME) cppMYOLDBASENAME Nothing
+               : CppPreOp "(void)" cppMYOLDBASE
+               : map (translateBC info)bc
     )
   ]
 
@@ -929,7 +931,7 @@ cppOP _ reg oper args = CppAssign (translateReg reg) (cppOP' oper)
           strLen s = cppMeth s "length" []
 
 cppRESERVE :: CompileInfo -> Int -> Cpp
-cppRESERVE _ _ = CppNoop
+cppRESERVE _ n = cppMeth cppSTACK "resize" [CppBinOp "+" (cppMeth cppSTACK "size" []) (CppNum $ CppInt n), CppNull]
 
 cppSTACK :: Cpp
 cppSTACK = CppIdent "vm->valstack"

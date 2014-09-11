@@ -8,21 +8,10 @@
 namespace idris {
 
 //---------------------------------------------------------------------------------------
-class ValueStack : public std::deque<Value> {
-public:
-  using std::deque<Value>::deque;  
-  Value& operator [](size_type index) {
-    if (index >= this->size()) {
-      this->resize(index + 1, nullptr);
-    }
-    return this->std::deque<Value>::operator[](index);
-  }
-};
 
-//---------------------------------------------------------------------------------------
-
-using CallPair = pair<Func,IndexType>;
-using CallStack = stack<CallPair>;
+using ValueStack = deque<Value>;
+using CallPair   = pair<Func,IndexType>;
+using CallStack  = stack<CallPair>;
 
 //---------------------------------------------------------------------------------------
 struct VirtualMachine {
