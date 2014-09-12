@@ -1,8 +1,15 @@
-
 #include <sstream>
 #include <iostream>
 #include <deque>
-#include <codecvt>
+
+#if defined(__clang__)
+  #if __has_include(<codecvt>)
+    #include <codecvt>
+    #include <locale>
+    #define CODECVT_AVAILABLE
+  #endif
+#endif
+
 #include "box.h"
 #include "types_aliases.h"
 
@@ -88,10 +95,14 @@ long long int TypedBoxedValue<'s', string>::asIntegral() const {
 template struct TypedBoxedValue<'c', char32_t>;
 
 template <>
-string TypedBoxedValue<'c', char32_t>::asString() const {\
-  std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t> utf32conv;
-  string utf8 = utf32conv.to_bytes(value);  
-  return interpreted_string(utf8);
+string TypedBoxedValue<'c', char32_t>::asString() const {
+  #if defined CODECVT_AVAILABLE  
+    std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t> utf32conv;
+    string utf8 = utf32conv.to_bytes(value);  
+  #else  
+    string utf8 = string(1, static_cast<char>(value)); // no unicode support, for now
+  #endif
+  return utf8;
 }
 
 template <>
