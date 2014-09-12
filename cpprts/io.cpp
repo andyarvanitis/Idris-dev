@@ -1,6 +1,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <cassert>
 #include "io.h"
 #include "exceptions.h"
 
@@ -16,7 +17,7 @@ nullptr_t putStr(const string str) {
 }
 
 shared_ptr<void> fileOpen(const string name, const string mode) {
-  fstream::openmode openmode = 0x00;
+  auto openmode = fstream::openmode(0x00);
   for (auto flag : mode) {
     switch (flag) {
       case 'r':
