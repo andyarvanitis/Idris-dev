@@ -37,8 +37,8 @@ length (x::xs) = 1 + length xs
 
 ||| Show that the length function on vectors in fact calculates the length
 private lengthCorrect : (n : Nat) -> (xs : Vect n a) -> length xs = n
-lengthCorrect Z [] = refl
-lengthCorrect (S n) (x :: xs) = rewrite lengthCorrect n xs in refl
+lengthCorrect Z     []        = Refl
+lengthCorrect (S n) (x :: xs) = rewrite lengthCorrect n xs in Refl
 
 --------------------------------------------------------------------------------
 -- Indexing into vectors
@@ -64,35 +64,36 @@ init (x::y::ys) = x :: init (y::ys)
 
 ||| Extract a particular element from a vector
 index : Fin n -> Vect n a -> a
-index fZ     (x::xs) = x
-index (fS k) (x::xs) = index k xs
-index fZ     [] impossible
+index FZ     (x::xs) = x
+index (FS k) (x::xs) = index k xs
+index FZ     [] impossible
+
 
 ||| Insert an element at a particular index
 insertAt : Fin (S n) -> a -> Vect n a -> Vect (S n) a
-insertAt fZ     y xs      = y :: xs
-insertAt (fS k) y (x::xs) = x :: insertAt k y xs
-insertAt (fS k) y []      = absurd k
+insertAt FZ     y xs      = y :: xs
+insertAt (FS k) y (x::xs) = x :: insertAt k y xs
+insertAt (FS k) y []      = absurd k
 
 ||| Construct a new vector consisting of all but the indicated element
 deleteAt : Fin (S n) -> Vect (S n) a -> Vect n a
-deleteAt           fZ     (x::xs) = xs
-deleteAt {n = S m} (fS k) (x::xs) = x :: deleteAt k xs
-deleteAt {n = Z}   (fS k) (x::xs) = absurd k
-deleteAt           _      [] impossible
+deleteAt           FZ     (x::xs) = xs
+deleteAt {n = S m} (FS k) (x::xs) = x :: deleteAt k xs
+deleteAt {n = Z}   (FS k) (x::xs) = absurd k
+deleteAt           _      []      impossible
 
 ||| Replace an element at a particlar index with another
 replaceAt : Fin n -> t -> Vect n t -> Vect n t
-replaceAt fZ     y (x::xs) = y :: xs
-replaceAt (fS k) y (x::xs) = x :: replaceAt k y xs
+replaceAt FZ     y (x::xs) = y :: xs
+replaceAt (FS k) y (x::xs) = x :: replaceAt k y xs
 
 ||| Replace the element at a particular index with the result of applying a function to it
 ||| @ i the index to replace at
 ||| @ f the update function
 ||| @ xs the vector to replace in
 updateAt : (i : Fin n) -> (f : t -> t) -> (xs : Vect n t) -> Vect n t
-updateAt fZ     f (x::xs) = f x :: xs
-updateAt (fS k) f (x::xs) = x :: updateAt k f xs
+updateAt FZ     f (x::xs) = f x :: xs
+updateAt (FS k) f (x::xs) = x :: updateAt k f xs
 
 --------------------------------------------------------------------------------
 -- Subvectors
@@ -101,32 +102,51 @@ updateAt (fS k) f (x::xs) = x :: updateAt k f xs
 ||| Get the first m elements of a Vect
 ||| @ m the number of elements to take
 take : (n : Nat) -> Vect (n + m) a -> Vect n a
-take Z xs = []
+take Z     xs        = []
 take (S k) (x :: xs) = x :: take k xs
 
 ||| Remove the first m elements of a Vect
 ||| @ m the number of elements to remove
 drop : (n : Nat) -> Vect (n + m) a -> Vect m a
-drop Z xs = xs
+drop Z     xs        = xs
 drop (S k) (x :: xs) = drop k xs
+
+||| Take the longest prefix of a Vect such that all elements satisfy some
+||| Boolean predicate.
+|||
+||| @ p the predicate
+takeWhile : (p : a -> Bool) -> Vect n a -> (q ** Vect q a)
+takeWhile p []      = (_ ** [])
+takeWhile p (x::xs) =
+  let (len ** ys) = takeWhile p xs
+  in if p x then
+      (S len ** x :: ys)
+    else
+      (_ ** [])
+
+||| Remove the longest prefix of a Vect such that all removed elements satisfy some
+||| Boolean predicate.
+|||
+||| @ p the predicate
+dropWhile : (p : a -> Bool) -> Vect n a -> (q ** Vect q a)
+dropWhile p [] = (_ ** [])
+dropWhile p (x::xs) =
+  if p x then
+    dropWhile p xs
+  else
+    (_ ** x::xs)
 
 --------------------------------------------------------------------------------
 -- Transformations
 --------------------------------------------------------------------------------
 
 ||| Reverse the order of the elements of a vector
-total reverse : {n : Nat} -> Vect n a -> Vect n a
-reverse {n} xs = reverse' [] (plusZeroRightNeutral n) xs
-  where
-    total reverse' : {m, j, l : Nat} ->
-                     Vect m a -> (j + m = l) -> Vect j a -> Vect l a
-    reverse' {m} {j = Z  } {l} acc prf []      ?= acc
-    reverse' {m} {j = S k} {l} acc prf (x::xs)  =
-      let prf1 : (m + (S k) = l) = rewrite plusCommutative m (S k) in prf in
-      let prf2 : (S (m + k) = l) = rewrite plusSuccRightSucc m k in prf1 in
-      let prf3 : (S (k + m) = l) = rewrite plusCommutative k m in prf2 in
-      let prf4 : (k + (S m) = l) = rewrite sym $ plusSuccRightSucc k m in prf3 in
-      reverse' (x::acc) prf4 xs
+reverse : Vect n a -> Vect n a
+reverse xs = go [] xs
+  where go : Vect n a -> Vect m a -> Vect (n+m) a
+        go {n}         acc []        = rewrite plusZeroRightNeutral n in acc
+        go {n} {m=S m} acc (x :: xs) = rewrite sym $ plusSuccRightSucc n m
+                                       in go (x::acc) xs
 
 ||| Alternate an element between the other elements of a vector
 ||| @ sep the element to intersperse
@@ -136,8 +156,9 @@ intersperse sep []      = []
 intersperse sep (x::xs) = x :: intersperse' sep xs
   where
     intersperse' : a -> Vect n a -> Vect (n + n) a
-    intersperse' sep []      = []
-    intersperse' sep (x::xs) ?= sep :: x :: intersperse' sep xs
+    intersperse'         sep []      = []
+    intersperse' {n=S n} sep (x::xs) = rewrite sym $ plusSuccRightSucc n n
+                                       in sep :: x :: intersperse' sep xs
 
 --------------------------------------------------------------------------------
 -- Conversion from list (toList is provided by Foldable)
@@ -147,7 +168,7 @@ intersperse sep (x::xs) = x :: intersperse' sep xs
 fromList' : Vect n a -> (l : List a) -> Vect (length l + n) a
 fromList' ys [] = ys
 fromList' {n} ys (x::xs) =
-  rewrite (plusSuccRightSucc (length xs) n) ==> 
+  rewrite (plusSuccRightSucc (length xs) n) ==>
           Vect (plus (length xs) (S n)) a in
   fromList' (x::ys) xs
 
@@ -212,7 +233,7 @@ instance (Eq a) => Eq (Vect n a) where
 --------------------------------------------------------------------------------
 
 instance Ord a => Ord (Vect n a) where
-  compare [] [] = EQ
+  compare []      []      = EQ
   compare (x::xs) (y::ys) =
     if x /= y then
       compare x y
@@ -228,15 +249,24 @@ instance Functor (Vect n) where
   map f []        = []
   map f (x::xs) = f x :: map f xs
 
--- XXX: causes Idris to enter an infinite loop when type checking in the REPL
---mapMaybe : (a -> Maybe b) -> Vect n a -> (p ** Vect b p)
---mapMaybe f []      = (_ ** [])
---mapMaybe f (x::xs) = mapMaybe' (f x)
--- XXX: working around the type restrictions on case statements
---  where
---    mapMaybe' : (Maybe b) -> (n ** Vect b n) -> (p ** Vect b p)
---    mapMaybe' Nothing  (n ** tail) = (n   ** tail)
---    mapMaybe' (Just j) (n ** tail) = (S n ** j::tail)
+
+||| Map a partial function across a vector, returning those elements for which
+||| the function had a value.
+|||
+||| The first projection of the resulting pair (ie the length) will always be
+||| at most the length of the input vector. This is not, however, guaranteed
+||| by the type.
+|||
+||| @ f the partial function (expressed by returning `Maybe`)
+||| @ xs the vector to check for results
+mapMaybe : (f : a -> Maybe b) -> (xs : Vect n a) -> (m : Nat ** Vect m b)
+mapMaybe f []      = (_ ** [])
+mapMaybe f (x::xs) =
+  let (len ** ys) = mapMaybe f xs
+  in case f x of
+       Just y  => (S len ** y :: ys)
+       Nothing => (  len **      ys)
+
 
 --------------------------------------------------------------------------------
 -- Folds
@@ -396,6 +426,15 @@ nubBy = nubBy' []
 nub : Eq a => Vect n a -> (p ** Vect p a)
 nub = nubBy (==)
 
+deleteBy : (a -> a -> Bool) -> a -> Vect n a -> (p ** Vect p a)
+deleteBy _  _ []      = (_ ** [])
+deleteBy eq x (y::ys) =
+  let (len ** zs) = deleteBy eq x ys
+  in if x `eq` y then (_ ** ys) else (S len ** y ::zs)
+
+delete : (Eq a) => a -> Vect n a -> (p ** Vect p a)
+delete = deleteBy (==)
+
 --------------------------------------------------------------------------------
 -- Splitting and breaking lists
 --------------------------------------------------------------------------------
@@ -407,6 +446,15 @@ nub = nubBy (==)
 ||| @ xs  the Vect to split in two
 splitAt : (n : Nat) -> (xs : Vect (n + m) a) -> (Vect n a, Vect m a)
 splitAt n xs = (take n xs, drop n xs)
+
+partition : (a -> Bool) -> Vect n a -> ((p ** Vect p a), (q ** Vect q a))
+partition p []      = ((_ ** []), (_ ** []))
+partition p (x::xs) =
+  let ((leftLen ** lefts), (rightLen ** rights)) = partition p xs in
+    if p x then
+      ((S leftLen ** x::lefts), (rightLen ** rights))
+    else
+      ((leftLen ** lefts), (S rightLen ** x::rights))
 
 --------------------------------------------------------------------------------
 -- Predicates
@@ -451,18 +499,18 @@ catMaybes ((Just j)::xs) with (catMaybes xs)
   | (_ ** tail) = (_ ** j::tail)
 
 diag : Vect n (Vect n a) -> Vect n a
-diag [] = []
+diag []             = []
 diag ((x::xs)::xss) = x :: diag (map tail xss)
 
 range : Vect n (Fin n)
-range {n=Z} = []
-range {n=S _} = fZ :: map fS range
+range {n=Z}   = []
+range {n=S _} = FZ :: map FS range
 
 ||| Transpose a Vect of Vects, turning rows into columns and vice versa.
 |||
 ||| As the types ensure rectangularity, this is an involution, unlike `Prelude.List.transpose`.
 transpose : Vect m (Vect n a) -> Vect n (Vect m a)
-transpose [] = replicate _ []
+transpose []        = replicate _ []
 transpose (x :: xs) = zipWith (::) x (transpose xs)
 
 --------------------------------------------------------------------------------
@@ -470,32 +518,16 @@ transpose (x :: xs) = zipWith (::) x (transpose xs)
 --------------------------------------------------------------------------------
 
 vectConsCong : (x : a) -> (xs : Vect n a) -> (ys : Vect m a) -> (xs = ys) -> (x :: xs = x :: ys)
-vectConsCong x xs xs refl = refl
+vectConsCong x xs xs Refl = Refl
 
 vectNilRightNeutral : (xs : Vect n a) -> xs ++ [] = xs
-vectNilRightNeutral [] = refl
+vectNilRightNeutral [] = Refl
 vectNilRightNeutral (x :: xs) =
   vectConsCong _ _ _ (vectNilRightNeutral xs)
 
 vectAppendAssociative : (x : Vect xLen a) -> (y : Vect yLen a) -> (z : Vect zLen a) -> x ++ (y ++ z) = (x ++ y) ++ z
-vectAppendAssociative [] y z = refl
+vectAppendAssociative [] y z = Refl
 vectAppendAssociative (x :: xs) ys zs =
   vectConsCong _ _ _ (vectAppendAssociative xs ys zs)
 
 
---------------------------------------------------------------------------------
--- Proofs
---------------------------------------------------------------------------------
-
-Prelude.Vect.reverse'_lemma_1 = proof {
-    intros;
-    rewrite prf;
-    rewrite sym (plusZeroRightNeutral m);
-    exact value;
-}
-
-Prelude.Vect.intersperse'_lemma_1 = proof {
-  intros;
-  rewrite (plusSuccRightSucc n1 n1);
-  trivial;
-}

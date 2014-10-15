@@ -50,13 +50,6 @@ make verbosity =
 -- -----------------------------------------------------------------------------
 -- Flags
 
-usesLLVM :: S.ConfigFlags -> Bool
-usesLLVM flags =
-  case lookup (FlagName "llvm") (S.configConfigurationsFlags flags) of
-    Just True -> True
-    Just False -> False
-    Nothing -> True
-
 usesGMP :: S.ConfigFlags -> Bool
 usesGMP flags =
   case lookup (FlagName "gmp") (S.configConfigurationsFlags flags) of
@@ -82,14 +75,11 @@ isFreestanding flags =
 
 idrisClean _ flags _ _ = do
       cleanStdLib
-      cleanLLVM
    where
       verbosity = S.fromFlag $ S.cleanVerbosity flags
 
       cleanStdLib = do
          makeClean "libs"
-
-      cleanLLVM = makeClean "llvm"
 
       makeClean dir = make verbosity [ "-C", dir, "clean", "IDRIS=idris" ]
 
@@ -189,7 +179,6 @@ getVersion args flags = do
 idrisBuild _ flags _ local = do
       buildStdLib
       buildRTS
-      when (usesLLVM $ configFlags local) buildLLVM
       buildCPPRTS
    where
       verbosity = S.fromFlag $ S.buildVerbosity flags
@@ -202,9 +191,6 @@ idrisBuild _ flags _ local = do
 
       buildRTS = make verbosity (["-C", "rts", "build"] ++ 
                                    gmpflag (usesGMP (configFlags local)))
-
-      buildLLVM = make verbosity ["-C", "llvm", "build"]
-
       buildCPPRTS = make verbosity ["-C", "cpprts", "build"]
 
       gmpflag False = []
@@ -218,7 +204,6 @@ idrisBuild _ flags _ local = do
 idrisInstall verbosity copy pkg local = do
       installStdLib
       installRTS
-      when (usesLLVM $ configFlags local) installLLVM
       installCPPRTS
    where
       target = datadir $ L.absoluteInstallDirs pkg local copy
@@ -231,11 +216,6 @@ idrisInstall verbosity copy pkg local = do
          let target' = target </> "rts"
          putStrLn $ "Installing run time system in " ++ target'
          makeInstall "rts" target'
-
-      installLLVM = do
-         let target' = target </> "llvm"
-         putStrLn $ "Installing LLVM library in " ++ target
-         makeInstall "llvm" target'
 
       installCPPRTS = do
          let target' = target </> "cpprts"

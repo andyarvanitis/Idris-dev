@@ -53,6 +53,11 @@ fullExpr syn = do x <- expr syn
                   i <- get
                   return $ debindApp syn (desugar syn i x)
 
+tryFullExpr :: SyntaxInfo -> IState -> String -> Maybe PTerm
+tryFullExpr syn st input =
+  case runparser (fullExpr syn) st "" input of
+    Success tm -> Just tm
+    _ -> Nothing
 
 {- | Parses an expression
 @
@@ -278,7 +283,7 @@ SimpleExpr ::=
     {- External (User-defined) Simple Expression -}
   | '?' Name
   | % 'instance'
-  | 'refl' ('{' Expr '}')?
+  | 'Refl' ('{' Expr '}')?
   | ProofExpr
   | TacticsExpr
   | FnName
@@ -288,7 +293,7 @@ SimpleExpr ::=
   | Bracketed
   | Constant
   | Type
-  | '_|_'
+  | 'Void'
   | Quasiquote
   | Unquote
   | '_'
@@ -300,7 +305,7 @@ simpleExpr syn =
             try (simpleExternalExpr syn)
         <|> do x <- try (lchar '?' *> name); return (PMetavar x)
         <|> do lchar '%'; fc <- getFC; reserved "instance"; return (PResolveTC fc)
-        <|> do reserved "refl"; fc <- getFC;
+        <|> do reserved "Refl"; fc <- getFC;
                tm <- option Placeholder (do lchar '{'; t <- expr syn; lchar '}';
                                             return t)
                return (PRefl fc tm)
@@ -328,9 +333,6 @@ simpleExpr syn =
                fc <- getFC
                return (PAppBind fc s [])
         <|> bracketed (disallowImp syn)
-        <|> do symbol "_|_"
-               fc <- getFC
-               return (PFalse fc)
         <|> quasiquote syn
         <|> unquote syn
         <|> do lchar '_'; return Placeholder
@@ -600,9 +602,9 @@ constraintArg syn = do symbol "@{"
 
 -}
 quasiquote :: SyntaxInfo -> IdrisParser PTerm
-quasiquote syn = do guard (not (syn_in_quasiquote syn))
-                    symbol "`("
-                    e <- expr syn { syn_in_quasiquote = True , inPattern = False}
+quasiquote syn = do symbol "`("
+                    e <- expr syn { syn_in_quasiquote = (syn_in_quasiquote syn) + 1 ,
+                                    inPattern = False }
                     g <- optional $ do
                            symbol ":"
                            expr syn { inPattern = False } -- don't allow antiquotes
@@ -616,9 +618,9 @@ quasiquote syn = do guard (not (syn_in_quasiquote syn))
 
 -}
 unquote :: SyntaxInfo -> IdrisParser PTerm
-unquote syn = do guard (syn_in_quasiquote syn)
+unquote syn = do guard (syn_in_quasiquote syn > 0)
                  symbol "~"
-                 e <- simpleExpr syn { syn_in_quasiquote = False }
+                 e <- simpleExpr syn { syn_in_quasiquote = syn_in_quasiquote syn - 1 }
                  return $ PUnquote e
               <?> "unquotation"
 
@@ -716,7 +718,8 @@ TypeExpr ::= ConstraintList? Expr;
 typeExpr :: SyntaxInfo -> IdrisParser PTerm
 typeExpr syn = do cs <- if implicitAllowed syn then constraintList syn else return []
                   sc <- expr syn
-                  return (bindList (PPi constraint) (map (\x -> (sMN 0 "constrarg", x)) cs) sc)
+                  return (bindList (PPi constraint)
+                                   (map (\x -> (sMN 0 "constrarg", x)) cs) sc)
                <?> "type signature"
 
 {- | Parses a lambda expression
@@ -1302,7 +1305,7 @@ tactic syn = do reserved "intro"; ns <- sepBy (indentPropHolds gtProp *> name) (
                               return (TDocStr (Right c)))
                   <|> try (do reserved "doc"
                               whiteSpace
-                              n <- (fnName <|> (string "_|_" >> return falseTy))
+                              n <- fnName
                               eof
                               return (TDocStr (Left n)))
                   <|> try (do reserved "search"
@@ -1325,3 +1328,4 @@ fullTactic :: SyntaxInfo -> IdrisParser PTactic
 fullTactic syn = do t <- tactic syn
                     eof
                     return t
+

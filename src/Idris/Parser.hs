@@ -216,19 +216,28 @@ decl' syn =    fixity
 -}
 syntaxDecl :: SyntaxInfo -> IdrisParser PDecl
 syntaxDecl syn = do s <- syntaxRule syn
-                    i <- get
-                    let rs = syntax_rules i
-                    let ns = syntax_keywords i
-                    let ibc = ibc_write i
-                    let ks = map show (names s)
-                    put (i { syntax_rules = s : rs,
-                             syntax_keywords = ks ++ ns,
-                             ibc_write = IBCSyntax s : map IBCKeyword ks ++ ibc })
+                    i <- get 
+                    put (i `addSyntax` s)
                     fc <- getFC
-                    return (PSyntax fc s)
-  where names (Rule syms _ _) = mapMaybe ename syms
-        ename (Keyword n) = Just n
-        ename _           = Nothing
+                    return (PSyntax fc s) 
+
+-- | Extend an 'IState' with a new syntax extension. See also 'addReplSyntax'.
+addSyntax :: IState -> Syntax -> IState
+addSyntax i s = i { syntax_rules = s : rs,
+                    syntax_keywords = ks ++ ns,
+                    ibc_write = IBCSyntax s : map IBCKeyword ks ++ ibc }
+  where rs = syntax_rules i
+        ns = syntax_keywords i
+        ibc = ibc_write i
+        ks = map show (syntaxNames s)
+
+-- | Like 'addSyntax', but no effect on the IBC.
+addReplSyntax :: IState -> Syntax -> IState
+addReplSyntax i s = i { syntax_rules = s : rs,
+                        syntax_keywords = ks ++ ns }
+  where rs = syntax_rules i
+        ns = syntax_keywords i
+        ks = map show (syntaxNames s)
 
 {- | Parses a syntax extension declaration
 
@@ -329,12 +338,15 @@ fnDecl syn = try (do notEndBlock
 -}
 fnDecl' :: SyntaxInfo -> IdrisParser PDecl
 fnDecl' syn = checkFixity $
-              do (doc, fc, opts', n, acc) <- try (do
+              do (doc, argDocs, fc, opts', n, acc) <- try (do
                         pushIndent
+                        (doc, argDocs) <- option noDocs docComment
                         ist <- get
-                        doc <- option noDocs docComment
-                        ist <- get
-                        let initOpts = if default_total ist
+                        let doc' = annotCode (tryFullExpr syn ist) doc
+                            argDocs' = [ (n, annotCode (tryFullExpr syn ist) d)
+                                       | (n, d) <- argDocs ]
+
+                            initOpts = if default_total ist
                                           then [TotalFn]
                                           else []
                         opts <- fnOpts initOpts
@@ -344,11 +356,11 @@ fnDecl' syn = checkFixity $
                         let n = expandNS syn n_in
                         fc <- getFC
                         lchar ':'
-                        return (doc, fc, opts', n, acc))
+                        return (doc', argDocs', fc, opts', n, acc))
                  ty <- typeExpr (allowImp syn)
                  terminator
                  addAcc n acc
-                 return (PTy (fst doc) (snd doc) syn fc opts' n ty)
+                 return (PTy doc argDocs syn fc opts' n ty)
             <|> postulate syn
             <|> caf syn
             <|> pattern syn
@@ -396,6 +408,9 @@ NameTimesList ::=
 @
 -}
 -- FIXME: Check compatability for function options (i.e. partal/total)
+--
+-- Issue #1574 on the issue tracker.
+--     https://github.com/idris-lang/Idris-dev/issues/1574
 fnOpts :: [FnOpt] -> IdrisParser [FnOpt]
 fnOpts opts
         = do reserved "total"; fnOpts (TotalFn : opts)
@@ -434,10 +449,12 @@ Postulate ::=
 @
 -}
 postulate :: SyntaxInfo -> IdrisParser PDecl
-postulate syn = do doc <- try $ do doc <- option noDocs docComment
+postulate syn = do doc <- try $ do (doc, _) <- option noDocs docComment
+                                   ist <- get
+                                   let doc' = annotCode (tryFullExpr syn ist) doc
                                    pushIndent
                                    reserved "postulate"
-                                   return doc
+                                   return doc'
                    ist <- get
                    let initOpts = if default_total ist
                                      then [TotalFn]
@@ -452,7 +469,7 @@ postulate syn = do doc <- try $ do doc <- option noDocs docComment
                    fc <- getFC
                    terminator
                    addAcc n acc
-                   return (PPostulate (fst doc) syn fc opts' n ty)
+                   return (PPostulate doc syn fc opts' n ty)
                  <?> "postulate"
 
 {- | Parses a using declaration
@@ -581,16 +598,20 @@ Class ::=
 @
 -}
 class_ :: SyntaxInfo -> IdrisParser [PDecl]
-class_ syn = do (doc, acc) <- try (do
-                  doc <- option noDocs docComment
+class_ syn = do (doc, argDocs, acc) <- try (do
+                  (doc, argDocs) <- option noDocs docComment
+                  ist <- get
+                  let doc' = annotCode (tryFullExpr syn ist) doc
+                      argDocs' = [ (n, annotCode (tryFullExpr syn ist) d)
+                                 | (n, d) <- argDocs ]
                   acc <- optional accessibility
-                  return (doc, acc))
+                  return (doc', argDocs', acc))
                 reserved "class"; fc <- getFC; cons <- constraintList syn; n_in <- fnName
                 let n = expandNS syn n_in
                 cs <- many carg
                 ds <- option [] (classBlock syn)
                 accData acc n (concatMap declared ds)
-                return [PClass (fst doc) syn fc cons n cs (snd doc) ds]
+                return [PClass doc syn fc cons n cs argDocs ds]
              <?> "type-class declaration"
   where
     carg :: IdrisParser (Name, PTerm)
@@ -618,7 +639,8 @@ instance_ syn = do reserved "instance"; fc <- getFC
                    cn <- fnName
                    args <- many (simpleExpr syn)
                    let sc = PApp fc (PRef fc cn) (map pexp args)
-                   let t = bindList (PPi constraint) (map (\x -> (sMN 0 "constraint", x)) cs) sc
+                   let t = bindList (PPi constraint)
+                                    (map (\x -> (sMN 0 "constraint", x)) cs) sc
                    ds <- option [] (instanceBlock syn)
                    return [PInstance syn fc cs cn args t en ds]
                  <?> "instance declaration"
@@ -905,7 +927,7 @@ clause syn
 
 {-| Parses with pattern
 
-@ 
+@
 WExpr ::= '|' Expr';
 @
 -}
@@ -1152,6 +1174,8 @@ parseProg syn fname input mrk
          case runparser mainProg i fname input of
             Failure doc     -> do -- FIXME: Get error location from trifecta
                                   -- this can't be the solution!
+                                  -- Issue #1575 on the issue tracker.
+                                  --    https://github.com/idris-lang/Idris-dev/issues/1575
                                   let (fc, msg) = findFC doc
                                   i <- getIState
                                   case idris_outputmode i of
@@ -1263,7 +1287,7 @@ loadSource lidr f toline
                   putIState (i { default_access = Hidden, module_aliases = modAliases })
                   clearIBC -- start a new .ibc file
                   -- record package info in .ibc
-                  imps <- allImportDirs 
+                  imps <- allImportDirs
                   mapM_ addIBC (map IBCImportDir imps)
                   mapM_ (addIBC . IBCImport) [realName | (realName, alias, fc) <- imports]
                   let syntax = defaultSyntax{ syn_namespace = reverse mname,

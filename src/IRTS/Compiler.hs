@@ -12,11 +12,6 @@ import IRTS.CodegenJava
 import IRTS.DumpBC
 import IRTS.CodegenJavaScript
 import IRTS.CodegenCpp
-#ifdef IDRIS_LLVM
-import IRTS.CodegenLLVM
-#else
-import Util.LLVMStubs
-#endif
 import IRTS.Inliner
 
 import Idris.AbsSyntax
@@ -129,7 +124,6 @@ generate codegen mainmod ir
        -- Built-in code generators (FIXME: lift these out!)
        Via "c" -> codegenC ir 
        Via "java" -> codegenJava ir 
-       Via "llvm" -> codegenLLVM ir
        Via "cpp" -> codegenCpp ir
        -- Any external code generator
        Via cg -> do let cmd = "idris-" ++ cg ++ " " ++ mainmod ++

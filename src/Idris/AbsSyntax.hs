@@ -111,9 +111,16 @@ addLangExt ErrorReflection = do i <- getIState
                                   idris_language_extensions = ErrorReflection : idris_language_extensions i
                                 }
 
-addTrans :: (Term, Term) -> Idris ()
-addTrans t = do i <- getIState
-                putIState $ i { idris_transforms = t : idris_transforms i }
+-- Transforms are organised by the function being applied on the lhs of the
+-- transform, to make looking up appropriate transforms quicker
+addTrans :: Name -> (Term, Term) -> Idris ()
+addTrans basefn t 
+           = do i <- getIState
+                let t' = case lookupCtxtExact basefn (idris_transforms i) of
+                              Just def -> (t : def)
+                              Nothing -> [t]
+                putIState $ i { idris_transforms = addDef basefn t' 
+                                                          (idris_transforms i) }
 
 addErrRev :: (Term, Term) -> Idris ()
 addErrRev t = do i <- getIState
@@ -279,7 +286,7 @@ addCoercion :: Name -> Idris ()
 addCoercion n = do i <- getIState
                    putIState $ i { idris_coercions = nub $ n : idris_coercions i }
 
-addDocStr :: Name -> Docstring -> [(Name, Docstring)] -> Idris ()
+addDocStr :: Name -> Docstring (Maybe Term) -> [(Name, Docstring (Maybe Term))] -> Idris ()
 addDocStr n doc args
    = do i <- getIState
         putIState $ i { idris_docstrings = addDef n (doc, args) (idris_docstrings i) }
@@ -1033,7 +1040,6 @@ getPriority i tm = 1 -- pri tm
             [] -> 0 -- must be locally bound, if it's not an error...
     pri (PPi _ _ x y) = max 5 (max (pri x) (pri y))
     pri (PTrue _ _) = 0
-    pri (PFalse _) = 0
     pri (PRefl _ _) = 1
     pri (PEq _ _ _ l r) = max 1 (max (pri l) (pri r))
     pri (PRewrite _ l r _) = max 1 (max (pri l) (pri r))
@@ -1061,12 +1067,16 @@ addStatics n tm ptm =
        let stpos = staticList statics' tm
        i <- getIState
        when (not (null statics)) $
-          logLvl 5 $ show n ++ " " ++ show statics' ++ "\n" ++ show dynamics
-                        ++ "\n" ++ show stnames ++ "\n" ++ show dnames
+          logLvl 3 $ "Statics for " ++ show n ++ " " ++ show tm ++ " "
+                        ++ show statics' ++ "\n" ++ show dynamics
+                        ++ "\n" ++ show stpos
        putIState $ i { idris_statics = addDef n stpos (idris_statics i) }
        addIBC (IBCStatic n)
   where
-    initStatics (Bind n (Pi ty _) sc) (PPi p _ _ s)
+    initStatics (Bind n (Pi ty _) sc) (PPi p n' t s)
+            | n /= n' = let (static, dynamic) = initStatics sc (PPi p n' t s) in
+                            (static, (n, ty) : dynamic)
+    initStatics (Bind n (Pi ty _) sc) (PPi p n' _ s)
             = let (static, dynamic) = initStatics (instantiate (P Bound n ty) sc) s in
                   if pstatic p == Static then ((n, ty) : static, dynamic)
                     else if (not (searchArg p)) 
@@ -1760,7 +1770,6 @@ matchClause' names i x y = checkRpts $ match (fullApp x) (fullApp y) where
     match (PRefl _ _) (PRefl _ _) = return []
     match (PResolveTC _) (PResolveTC _) = return []
     match (PTrue _ _) (PTrue _ _) = return []
-    match (PFalse _) (PFalse _) = return []
     match (PReturn _) (PReturn _) = return []
     match (PPi _ _ t s) (PPi _ _ t' s') = do mt <- match' t t'
                                              ms <- match' s s'

@@ -38,10 +38,9 @@ instance Apropos Name where
   isApropos str (NS n' ns) = isApropos str n' || any (textIn str) ns
   -- Handle special names from stdlib
   isApropos str n | (n == unitTy || n == unitCon) && str == T.pack "()" = True
-                  | n == falseTy && str == T.pack "_|_" = True
                   | (n == pairTy || n == pairCon) && str == T.pack "," = True
                   | n == eqTy && str == T.pack "=" = True
-                  | n == eqCon && (T.toLower str) == T.pack "refl" = True
+                  | n == eqCon && (T.toLower str) == T.pack "Refl" = True
                   | (n == sigmaTy || n == existsCon) && str == T.pack "**" = True
   isApropos _   _          = False -- we don't care about case blocks, MNs, etc
 
@@ -71,7 +70,7 @@ instance Apropos (TT Name) where
 instance Apropos Const where
   isApropos str c = textIn str (T.pack (show c))
 
-instance Apropos Docstring where
+instance Apropos (Docstring a) where
   isApropos str d = containsText str d
 
 instance (Apropos a, Apropos b) => Apropos (a, b) where

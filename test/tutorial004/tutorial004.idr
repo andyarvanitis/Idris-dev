@@ -1,38 +1,38 @@
 
 fiveIsFive : 5 = 5
-fiveIsFive = refl
+fiveIsFive = Refl
 
 twoPlusTwo : 2 + 2 = 4
-twoPlusTwo = refl
+twoPlusTwo = Refl
 
-total disjoint : (n : Nat) -> Z = S n -> _|_
+total disjoint : (n : Nat) -> Z = S n -> Void
 disjoint n p = replace {P = disjointTy} p ()
   where
     disjointTy : Nat -> Type
     disjointTy Z = ()
-    disjointTy (S k) = _|_
+    disjointTy (S k) = Void
 
-total acyclic : (n : Nat) -> n = S n -> _|_
+total acyclic : (n : Nat) -> n = S n -> Void
 acyclic Z p = disjoint _ p
 acyclic (S k) p = acyclic k (succInjective _ _ p)
 
-empty1 : _|_
+empty1 : Void
 empty1 = hd [] where
     hd : List a -> a
     hd (x :: xs) = x
 
-empty2 : _|_
+empty2 : Void
 empty2 = empty2
 
 plusReduces : (n:Nat) -> plus Z n = n
-plusReduces n = refl
+plusReduces n = Refl
 
 plusReducesZ : (n:Nat) -> n = plus n Z
-plusReducesZ Z = refl
+plusReducesZ Z = Refl
 plusReducesZ (S k) = cong (plusReducesZ k)
 
 plusReducesS : (n:Nat) -> (m:Nat) -> S (plus n m) = plus n (S m)
-plusReducesS Z m = refl
+plusReducesS Z m = Refl
 plusReducesS (S k) m = cong (plusReducesS k m)
 
 plusReducesZ' : (n:Nat) -> n = plus n Z

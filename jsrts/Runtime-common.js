@@ -16,6 +16,14 @@ var i$valstack_base;
 var i$ret;
 var i$callstack;
 
+var i$Int = {};
+var i$String = {};
+var i$Integer = {};
+var i$Float = {};
+var i$Char = {};
+var i$Ptr = {};
+var i$Forgot = {};
+
 /** @constructor */
 var i$CON = function(tag,args,app,ev) {
   this.tag = tag;
@@ -59,7 +67,7 @@ var i$ffiWrap = function(fid,oldbase,myoldbase) {
 
     var res = fid;
 
-    for(var i = 0; i < arguments.length; ++i) {
+    for(var i = 0; i < (arguments.length ? arguments.length : 1); ++i) {
       while (res instanceof i$CON) {
         i$valstack_top += 1;
         i$valstack[i$valstack_top] = res;

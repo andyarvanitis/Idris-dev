@@ -51,6 +51,7 @@ instance TokenParsing IdrisParser where
   someSpace = many (simpleWhiteSpace <|> singleLineComment <|> multiLineComment) *> pure ()
   token p = do s <- get
                (FC fn (sl, sc) _) <- getFC --TODO: Update after fixing getFC
+                                           -- See Issue #1594
                r <- p
                (FC fn _ (el, ec)) <- getFC
                whiteSpace
@@ -146,14 +147,14 @@ multiLineComment =     try (string "{-" *> (string "-}") *> pure ())
         startEnd :: String
         startEnd = "{}-"
 
-{-| Parses a documentation comment (similar to haddoc) given a marker character
+{-| Parses a documentation comment (similar to haddock) given a marker character
 
 @
   DocComment_t ::=   '|||' ~EOL_t* EOL_t
                  ;
 @
  -}
-docComment :: IdrisParser (Docstring, [(Name, Docstring)])
+docComment :: IdrisParser (Docstring (), [(Name, Docstring ())])
 docComment = do dc <- pushIndent *> docCommentLine
                 rest <- many (indented docCommentLine)
                 args <- many $ do (name, first) <- indented argDocCommentLine
@@ -316,7 +317,7 @@ operatorLetter = oneOf opChars
 -- | Parses an operator
 operator :: MonadicParsing m => m String
 operator = do op <- token . some $ operatorLetter
-              when (op `elem` [":", "=>", "->", "<-", "=", "?=", "|"]) $ 
+              when (op `elem` [":", "=>", "->", "<-", "=", "?=", "|"]) $
                    fail $ op ++ " is not a valid operator"
               return op
 
@@ -343,6 +344,8 @@ getFC = do s <- position
            let (dir, file) = splitFileName (fileName s)
            let f = if dir == addTrailingPathSeparator "." then file else fileName s
            return $ FC f (lineNum s, columnNum s) (lineNum s, columnNum s) -- TODO: Change to actual spanning
+           -- Issue #1594 on the Issue Tracker.
+           -- https://github.com/idris-lang/Idris-dev/issues/1594
 
 {-* Syntax helpers-}
 -- | Bind constraints to term
@@ -574,4 +577,3 @@ collect (PInstance f s cs n ps t en ds : ds')
     = PInstance f s cs n ps t en (collect ds) : collect ds'
 collect (d : ds) = d : collect ds
 collect [] = []
-

@@ -23,18 +23,18 @@ import Data.Traversable (traverse)
 import Idris.AbsSyntax (addUsingConstraints, addImpl, getIState, putIState, implicit)
 import Idris.AbsSyntaxTree (class_instances, ClassInfo, defaultSyntax, eqTy, Idris,
   IState (idris_classes, idris_docstrings, tt_ctxt, idris_outputmode),
-  implicitAllowed, OutputMode(..), prettyDocumentedIst, PTerm, toplevel)
+  implicitAllowed, OutputMode(..), PTerm, toplevel)
 import Idris.Core.Evaluate (Context (definitions), Def (Function, TyDecl, CaseOp), normaliseC)
 import Idris.Core.TT hiding (score)
 import Idris.Core.Unify (match_unify)
 import Idris.Delaborate (delabTy)
 import Idris.Docstrings (noDocs, overview)
 import Idris.Elab.Type (elabType)
-import Idris.Output (iRenderOutput, iPrintResult, iRenderResult)
+import Idris.Output (iRenderOutput, iPrintResult, iRenderResult, prettyDocumentedIst)
 
 import Prelude hiding (pred)
 
-import Util.Pretty (text, char, vsep, (<>), Doc)
+import Util.Pretty (text, char, vsep, (<>), Doc, annotate)
 
 searchByType :: PTerm -> Idris ()
 searchByType pterm = do
@@ -173,13 +173,14 @@ data Score = Score
   , asymMods      :: !(Sided AsymMods)
   } deriving (Eq, Show)
 
-displayScore :: Score -> Doc a
-displayScore score = text $ case both noMods (asymMods score) of
-  Sided True  True  -> "=" -- types are isomorphic
-  Sided True  False -> "<" -- found type is more general than searched type
-  Sided False True  -> ">" -- searched type is more general than found type
-  Sided False False -> "_"
+displayScore :: Score -> Doc OutputAnnotation
+displayScore score = case both noMods (asymMods score) of
+  Sided True  True  -> annotated EQ "=" -- types are isomorphic
+  Sided True  False -> annotated LT "<" -- found type is more general than searched type
+  Sided False True  -> annotated GT ">" -- searched type is more general than found type
+  Sided False False -> text "_"
   where 
+  annotated ordr = annotate (AnnSearchResult ordr) . text
   noMods (Mods app tcApp tcIntro) = app + tcApp + tcIntro == 0
 
 scoreCriterion :: Score -> Bool

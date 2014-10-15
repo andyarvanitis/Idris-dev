@@ -10,7 +10,8 @@ import Idris.AbsSyntax
 import Idris.Imports
 import Idris.Error
 import Idris.Delaborate
-import Idris.Docstrings
+import qualified Idris.Docstrings as D
+import Idris.Docstrings (Docstring)
 import Idris.Output
 
 import qualified Cheapskate.Types as CT
@@ -31,7 +32,7 @@ import Codec.Compression.Zlib (compress)
 import Util.Zlib (decompressEither)
 
 ibcVersion :: Word8
-ibcVersion = 80
+ibcVersion = 83
 
 data IBCFile = IBCFile { ver :: Word8,
                          sourcefile :: FilePath,
@@ -60,8 +61,8 @@ data IBCFile = IBCFile { ver :: Word8,
                          ibc_fninfo :: [(Name, FnInfo)],
                          ibc_cg :: [(Name, CGInfo)],
                          ibc_defs :: [(Name, Def)],
-                         ibc_docstrings :: [(Name, (Docstring, [(Name, Docstring)]))],
-                         ibc_transforms :: [(Term, Term)],
+                         ibc_docstrings :: [(Name, (Docstring (Maybe Term), [(Name, Docstring (Maybe Term))]))],
+                         ibc_transforms :: [(Name, (Term, Term))],
                          ibc_errRev :: [(Term, Term)],
                          ibc_coercions :: [Name],
                          ibc_lineapps :: [(FilePath, Int, PTerm)],
@@ -124,29 +125,29 @@ mkIBC (i:is) f = do ist <- getIState
 
 ibc :: IState -> IBCWrite -> IBCFile -> Idris IBCFile
 ibc i (IBCFix d) f = return f { ibc_fixes = d : ibc_fixes f }
-ibc i (IBCImp n) f = case lookupCtxt n (idris_implicits i) of
-                        [v] -> return f { ibc_implicits = (n,v): ibc_implicits f     }
+ibc i (IBCImp n) f = case lookupCtxtExact n (idris_implicits i) of
+                        Just v -> return f { ibc_implicits = (n,v): ibc_implicits f     }
                         _ -> ifail "IBC write failed"
 ibc i (IBCStatic n) f
-                   = case lookupCtxt n (idris_statics i) of
-                        [v] -> return f { ibc_statics = (n,v): ibc_statics f     }
+                   = case lookupCtxtExact n (idris_statics i) of
+                        Just v -> return f { ibc_statics = (n,v): ibc_statics f     }
                         _ -> ifail "IBC write failed"
 ibc i (IBCClass n) f
-                   = case lookupCtxt n (idris_classes i) of
-                        [v] -> return f { ibc_classes = (n,v): ibc_classes f     }
+                   = case lookupCtxtExact n (idris_classes i) of
+                        Just v -> return f { ibc_classes = (n,v): ibc_classes f     }
                         _ -> ifail "IBC write failed"
 ibc i (IBCInstance int n ins) f
                    = return f { ibc_instances = (int,n,ins): ibc_instances f     }
 ibc i (IBCDSL n) f
-                   = case lookupCtxt n (idris_dsls i) of
-                        [v] -> return f { ibc_dsls = (n,v): ibc_dsls f     }
+                   = case lookupCtxtExact n (idris_dsls i) of
+                        Just v -> return f { ibc_dsls = (n,v): ibc_dsls f     }
                         _ -> ifail "IBC write failed"
 ibc i (IBCData n) f
-                   = case lookupCtxt n (idris_datatypes i) of
-                        [v] -> return f { ibc_datatypes = (n,v): ibc_datatypes f     }
+                   = case lookupCtxtExact n (idris_datatypes i) of
+                        Just v -> return f { ibc_datatypes = (n,v): ibc_datatypes f     }
                         _ -> ifail "IBC write failed"
-ibc i (IBCOpt n) f = case lookupCtxt n (idris_optimisation i) of
-                        [v] -> return f { ibc_optimise = (n,v): ibc_optimise f     }
+ibc i (IBCOpt n) f = case lookupCtxtExact n (idris_optimisation i) of
+                        Just v -> return f { ibc_optimise = (n,v): ibc_optimise f     }
                         _ -> ifail "IBC write failed"
 ibc i (IBCSyntax n) f = return f { ibc_syntax = n : ibc_syntax f }
 ibc i (IBCKeyword n) f = return f { ibc_keywords = n : ibc_keywords f }
@@ -158,12 +159,12 @@ ibc i (IBCCGFlag tgt n) f = return f { ibc_cgflags = (tgt, n) : ibc_cgflags f }
 ibc i (IBCDyLib n) f = return f {ibc_dynamic_libs = n : ibc_dynamic_libs f }
 ibc i (IBCHeader tgt n) f = return f { ibc_hdrs = (tgt, n) : ibc_hdrs f }
 ibc i (IBCDef n) f 
-   = do f' <- case lookupDef n (tt_ctxt i) of
-                   [v] -> do (v', (f', _)) <- runStateT (updateDef v) (f, length (symbols f))
-                             return f' { ibc_defs = (n,v) : ibc_defs f'     }
+   = do f' <- case lookupDefExact n (tt_ctxt i) of
+                   Just v -> do (v', (f', _)) <- runStateT (updateDef v) (f, length (symbols f))
+                                return f' { ibc_defs = (n,v) : ibc_defs f'     }
                    _ -> ifail "IBC write failed"
-        case lookupCtxt n (idris_patdefs i) of
-                   [v] -> return f' { ibc_patdefs = (n,v) : ibc_patdefs f' }
+        case lookupCtxtExact n (idris_patdefs i) of
+                   Just v -> return f' { ibc_patdefs = (n,v) : ibc_patdefs f' }
                    _ -> return f' -- Not a pattern definition
   where 
     updateDef :: Def -> StateT (IBCFile, Int) Idris Def
@@ -220,18 +221,18 @@ ibc i (IBCDef n) f
     update t = return t
 
 
-ibc i (IBCDoc n) f = case lookupCtxt n (idris_docstrings i) of
-                        [v] -> return f { ibc_docstrings = (n,v) : ibc_docstrings f }
+ibc i (IBCDoc n) f = case lookupCtxtExact n (idris_docstrings i) of
+                        Just v -> return f { ibc_docstrings = (n,v) : ibc_docstrings f }
                         _ -> ifail "IBC write failed"
-ibc i (IBCCG n) f = case lookupCtxt n (idris_callgraph i) of
-                        [v] -> return f { ibc_cg = (n,v) : ibc_cg f     }
+ibc i (IBCCG n) f = case lookupCtxtExact n (idris_callgraph i) of
+                        Just v -> return f { ibc_cg = (n,v) : ibc_cg f     }
                         _ -> ifail "IBC write failed"
 ibc i (IBCCoercion n) f = return f { ibc_coercions = n : ibc_coercions f }
 ibc i (IBCAccess n a) f = return f { ibc_access = (n,a) : ibc_access f }
 ibc i (IBCFlags n a) f = return f { ibc_flags = (n,a) : ibc_flags f }
 ibc i (IBCFnInfo n a) f = return f { ibc_fninfo = (n,a) : ibc_fninfo f }
 ibc i (IBCTotal n a) f = return f { ibc_total = (n,a) : ibc_total f }
-ibc i (IBCTrans t) f = return f { ibc_transforms = t : ibc_transforms f }
+ibc i (IBCTrans n t) f = return f { ibc_transforms = (n, t) : ibc_transforms f }
 ibc i (IBCErrRev t) f = return f { ibc_errRev = t : ibc_errRev f }
 ibc i (IBCLineApp fp l t) f
      = return f { ibc_lineapps = (fp,l,t) : ibc_lineapps f }
@@ -336,8 +337,8 @@ pImports fs
 pImps :: [(Name, [PArg])] -> Idris ()
 pImps imps = mapM_ (\ (n, imp) ->
                         do i <- getIState
-                           case lookupDefAcc n False (tt_ctxt i) of
-                              [(n, Hidden)] -> return ()
+                           case lookupDefAccExact n False (tt_ctxt i) of
+                              Just (n, Hidden) -> return ()
                               _ -> putIState (i { idris_implicits
                                             = addDef n imp (idris_implicits i) }))
                    imps
@@ -358,8 +359,8 @@ pClasses cs = mapM_ (\ (n, c) ->
                         do i <- getIState
                            -- Don't lose instances from previous IBCs, which
                            -- could have loaded in any order
-                           let is = case lookupCtxt n (idris_classes i) of
-                                      [CI _ _ _ _ _ ins] -> ins
+                           let is = case lookupCtxtExact n (idris_classes i) of
+                                      Just (CI _ _ _ _ _ ins) -> ins
                                       _ -> []
                            let c' = c { class_instances =
                                           class_instances c ++ is }
@@ -433,9 +434,10 @@ pDefs syms ds
                do let d' = updateDef d
                   case d' of
                        TyDecl _ _ -> return () 
-                       _ -> solveDeferred n 
+                       _ -> do iLOG $ "SOLVING " ++ show n
+                               solveDeferred n 
                   i <- getIState
-                  logLvl 5 $ "Added " ++ show (n, d')
+--                   logLvl 1 $ "Added " ++ show (n, d')
                   putIState (i { tt_ctxt = addCtxtDef n d' (tt_ctxt i) })) ds
   where
     updateDef (CaseOp c t args o s cd)
@@ -457,7 +459,7 @@ pDefs syms ds
     update (Proj t i) = Proj (update t) i
     update t = t
 
-pDocs :: [(Name, (Docstring, [(Name, Docstring)]))] -> Idris ()
+pDocs :: [(Name, (Docstring (Maybe Term), [(Name, Docstring (Maybe Term))]))] -> Idris ()
 pDocs ds = mapM_ (\ (n, a) -> addDocStr n (fst a) (snd a)) ds
 
 pAccess :: [(Name, Accessibility)] -> Idris ()
@@ -488,8 +490,8 @@ pCG ds = mapM_ (\ (n, a) -> addToCG n a) ds
 pCoercions :: [Name] -> Idris ()
 pCoercions ns = mapM_ (\ n -> addCoercion n) ns
 
-pTrans :: [(Term, Term)] -> Idris ()
-pTrans ts = mapM_ addTrans ts
+pTrans :: [(Name, (Term, Term))] -> Idris ()
+pTrans ts = mapM_ (\ (n, t) -> addTrans n t) ts
 
 pErrRev :: [(Term, Term)] -> Idris ()
 pErrRev ts = mapM_ addErrRev ts
@@ -520,13 +522,13 @@ pMetavars ns = do i <- getIState
                   putIState $ i { idris_metavars = Data.List.reverse ns 
                                                      ++ idris_metavars i }
 
------ For Cheapskate
+----- For Cheapskate and docstrings
 
-instance Binary CT.Doc where
-  put (CT.Doc opts lines) = do put opts ; put lines
+instance Binary a => Binary (D.Docstring a) where
+  put (D.DocString opts lines) = do put opts ; put lines
   get = do opts <- get
            lines <- get
-           return (CT.Doc opts lines)
+           return (D.DocString opts lines)
 
 instance Binary CT.Options where
   put (CT.Options x1 x2 x3 x4) = do put x1 ; put x2 ; put x3 ; put x4
@@ -536,49 +538,49 @@ instance Binary CT.Options where
            x4 <- get
            return (CT.Options x1 x2 x3 x4)
 
-instance Binary CT.Block where
-  put (CT.Para lines) = do putWord8 0 ; put lines
-  put (CT.Header i lines) = do putWord8 1 ; put i ; put lines
-  put (CT.Blockquote bs) = do putWord8 2 ; put bs
-  put (CT.List b t xs) = do putWord8 3 ; put b ; put t ; put xs
-  put (CT.CodeBlock attr txt) = do putWord8 4 ; put attr ; put txt
-  put (CT.HtmlBlock txt) = do putWord8 5 ; put txt
-  put CT.HRule = putWord8 6
+instance Binary a => Binary (D.Block a) where
+  put (D.Para lines) = do putWord8 0 ; put lines
+  put (D.Header i lines) = do putWord8 1 ; put i ; put lines
+  put (D.Blockquote bs) = do putWord8 2 ; put bs
+  put (D.List b t xs) = do putWord8 3 ; put b ; put t ; put xs
+  put (D.CodeBlock attr txt src) = do putWord8 4 ; put attr ; put txt ; put src
+  put (D.HtmlBlock txt) = do putWord8 5 ; put txt
+  put D.HRule = putWord8 6
   get = do i <- getWord8
            case i of
-             0 -> fmap CT.Para get
-             1 -> liftM2 CT.Header get get
-             2 -> fmap CT.Blockquote get
-             3 -> liftM3 CT.List get get get
-             4 -> liftM2 CT.CodeBlock get get
-             5 -> liftM CT.HtmlBlock get
-             6 -> return CT.HRule
+             0 -> fmap D.Para get
+             1 -> liftM2 D.Header get get
+             2 -> fmap D.Blockquote get
+             3 -> liftM3 D.List get get get
+             4 -> liftM3 D.CodeBlock get get get
+             5 -> liftM D.HtmlBlock get
+             6 -> return D.HRule
 
-instance Binary CT.Inline where
-  put (CT.Str txt) = do putWord8 0 ; put txt
-  put CT.Space = putWord8 1
-  put CT.SoftBreak = putWord8 2
-  put CT.LineBreak = putWord8 3
-  put (CT.Emph xs) = putWord8 4 >> put xs
-  put (CT.Strong xs) = putWord8 5 >> put xs
-  put (CT.Code xs) = putWord8 6 >> put xs
-  put (CT.Link a b c) = putWord8 7 >> put a >> put b >> put c
-  put (CT.Image a b c) = putWord8 8 >> put a >> put b >> put c
-  put (CT.Entity a) = putWord8 9 >> put a
-  put (CT.RawHtml x) = putWord8 10 >> put x
+instance Binary a => Binary (D.Inline a) where
+  put (D.Str txt) = do putWord8 0 ; put txt
+  put D.Space = putWord8 1
+  put D.SoftBreak = putWord8 2
+  put D.LineBreak = putWord8 3
+  put (D.Emph xs) = putWord8 4 >> put xs
+  put (D.Strong xs) = putWord8 5 >> put xs
+  put (D.Code xs tm) = putWord8 6 >> put xs >> put tm
+  put (D.Link a b c) = putWord8 7 >> put a >> put b >> put c
+  put (D.Image a b c) = putWord8 8 >> put a >> put b >> put c
+  put (D.Entity a) = putWord8 9 >> put a
+  put (D.RawHtml x) = putWord8 10 >> put x
   get = do i <- getWord8
            case i of
-             0 -> liftM CT.Str get
-             1 -> return CT.Space
-             2 -> return CT.SoftBreak
-             3 -> return CT.LineBreak
-             4 -> liftM CT.Emph get
-             5 -> liftM CT.Strong get
-             6 -> liftM CT.Code get
-             7 -> liftM3 CT.Link get get get
-             8 -> liftM3 CT.Image get get get
-             9 -> liftM CT.Entity get
-             10 -> liftM CT.RawHtml get
+             0 -> liftM D.Str get
+             1 -> return D.Space
+             2 -> return D.SoftBreak
+             3 -> return D.LineBreak
+             4 -> liftM D.Emph get
+             5 -> liftM D.Strong get
+             6 -> liftM2 D.Code get get
+             7 -> liftM3 D.Link get get get
+             8 -> liftM3 D.Image get get get
+             9 -> liftM D.Entity get
+             10 -> liftM D.RawHtml get
 
 instance Binary CT.ListType where
   put (CT.Bullet c) = putWord8 0 >> put c
@@ -1291,7 +1293,7 @@ instance Binary SyntaxInfo where
                x5 <- get
                x6 <- get
                x7 <- get
-               return (Syn x1 x2 x3 x4 id x5 x6 Nothing 0 x7 False)
+               return (Syn x1 x2 x3 x4 id x5 x6 Nothing 0 x7 0)
 
 instance (Binary t) => Binary (PClause' t) where
         put x
@@ -1433,8 +1435,6 @@ instance Binary PTerm where
                 PTrue x1 x2 -> do putWord8 12
                                   put x1
                                   put x2
-                PFalse x1 -> do putWord8 13
-                                put x1
                 PRefl x1 x2 -> do putWord8 14
                                   put x1
                                   put x2
@@ -1551,8 +1551,6 @@ instance Binary PTerm where
                    12 -> do x1 <- get
                             x2 <- get
                             return (PTrue x1 x2)
-                   13 -> do x1 <- get
-                            return (PFalse x1)
                    14 -> do x1 <- get
                             x2 <- get
                             return (PRefl x1 x2)

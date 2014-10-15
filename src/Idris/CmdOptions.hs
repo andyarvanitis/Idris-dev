@@ -64,7 +64,7 @@ pureArgParser args = case getParseResult $ execParserPure (prefs idm) (info pars
 parser :: Parser [Opt]
 parser = runA $ proc () -> do
   flags <- asA parseFlags -< ()
-  files <- asA (many $ argument ((fmap . fmap) Filename str) (metavar "FILES")) -< ()
+  files <- asA (many $ argument (fmap Filename str) (metavar "FILES")) -< ()
   A parseVersion >>> A helper -< (flags ++ files)
 
 parseFlags :: Parser [Opt]
@@ -96,6 +96,7 @@ parseFlags = many $
   <|> (ImportDir <$> strOption (short 'i' <> long "idrispath" <> help "Add directory to the list of import paths"))
   <|> flag' WarnOnly (long "warn")
   <|> (Pkg <$> strOption (short 'p' <> long "package"))
+  <|> (Port <$> strOption (long "port" <> metavar "PORT" <> help "REPL TCP port"))
   -- Package commands
   <|> (PkgBuild <$> strOption (long "build" <> metavar "IPKG" <> help "Build package"))
   <|> (PkgInstall <$> strOption (long "install" <> metavar "IPKG" <> help "Install package"))
@@ -115,7 +116,7 @@ parseFlags = many $
   <|> (EvalExpr <$> strOption (long "eval" <> short 'e' <> metavar "EXPR" <> help "Evaluate an expression without loading the REPL"))
   <|> flag' (InterpretScript "Main.main") (long "execute" <> help "Execute as idris")
   <|> (InterpretScript <$> strOption (long "exec" <> metavar "EXPR" <> help "Execute as idris"))
-  <|> ((\s -> Extension $ getExt s) <$> strOption (long "extension" <> short 'X' <> metavar "EXT" <> help "Turn on langage extension (TypeProviders or ErrorReflection)"))
+  <|> ((\s -> Extension $ getExt s) <$> strOption (long "extension" <> short 'X' <> metavar "EXT" <> help "Turn on language extension (TypeProviders or ErrorReflection)"))
   <|> flag' (OptLevel 3) (long "O3")
   <|> flag' (OptLevel 2) (long "O2")
   <|> flag' (OptLevel 1) (long "O1")

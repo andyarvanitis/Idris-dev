@@ -145,6 +145,12 @@ instance SExpable OutputAnnotation where
                        ItalicText    -> "italic"
                        UnderlineText -> "underline"
   toSExp (AnnTerm bnd tm) = toSExp [(SymbolAtom "tt-term", StringAtom (encodeTerm bnd tm))]
+  toSExp (AnnSearchResult ordr) = toSExp [(SymbolAtom "doc-overview",
+      StringAtom ("Result type is " ++ descr))]
+      where descr = case ordr of
+	      EQ -> "isomorphic"
+	      LT -> "more general than searched type"
+	      GT -> "more specific than searched type"
 
 encodeTerm :: [(Name, Bool)] -> Term -> String
 encodeTerm bnd tm = UTF8.toString . Base64.encode . Lazy.toStrict . Binary.encode $
@@ -212,6 +218,7 @@ data IdeSlaveCommand = REPLCompletions String
                      | TermNormalise [(Name, Bool)] Term
                      | TermShowImplicits [(Name, Bool)] Term
                      | TermNoImplicits [(Name, Bool)] Term
+                     | PrintDef String
 
 sexpToCommand :: SExp -> Maybe IdeSlaveCommand
 sexpToCommand (SexpList (x:[]))                                                         = sexpToCommand x
@@ -244,7 +251,7 @@ sexpToCommand (SexpList [SymbolAtom "apropos", StringAtom search])              
 sexpToCommand (SymbolAtom "get-options")                                                = Just GetOpts
 sexpToCommand (SexpList [SymbolAtom "set-option", SymbolAtom s, BoolAtom b])
   | Just opt <- lookup s opts                                                           = Just (SetOpt opt b)
-    where opts = [("show-implicits", ShowImpl), ("error-context", ErrContext)] --TODO support more
+    where opts = [("show-implicits", ShowImpl), ("error-context", ErrContext)] --TODO support more options. Issue #1611 in the Issue tracker. https://github.com/idris-lang/Idris-dev/issues/1611
 sexpToCommand (SexpList [SymbolAtom "metavariables", IntegerAtom cols])                 = Just (Metavariables (fromIntegral cols))
 sexpToCommand (SexpList [SymbolAtom "who-calls", StringAtom name])                      = Just (WhoCalls name)
 sexpToCommand (SexpList [SymbolAtom "calls-who", StringAtom name])                      = Just (CallsWho name)
@@ -254,6 +261,7 @@ sexpToCommand (SexpList [SymbolAtom "show-term-implicits", StringAtom encoded]) 
                                                                                           Just (TermShowImplicits bnd tm)
 sexpToCommand (SexpList [SymbolAtom "hide-term-implicits", StringAtom encoded])         = let (bnd, tm) = decodeTerm encoded in
                                                                                           Just (TermNoImplicits bnd tm)
+sexpToCommand (SexpList [SymbolAtom "print-definition", StringAtom name])               = Just (PrintDef name)
 sexpToCommand _                                                                         = Nothing
 
 parseMessage :: String -> Either Err (SExp, Integer)

@@ -67,7 +67,8 @@ codegenC' defs out exec incs objs libs flags dbg
              let gcc = comp ++ " " ++
                        gccDbg dbg ++ " " ++
                        gccFlags ++
-                       " -DHAS_PTHREAD " ++
+                       -- # Any flags defined here which alter the RTS API must also be added to config.mk
+                       " -DHAS_PTHREAD -DIDRIS_ENABLE_STATS" ++
                        " -I. " ++ objs ++ " -x c " ++
                        (if (exec == Executable) then "" else " -c ") ++
                        " " ++ tmpn ++
@@ -437,7 +438,7 @@ doOp v (LSExt (ITFixed from) ITChar) [x]
 doOp v (LSExt (ITFixed from) (ITFixed to)) [x]
     | nativeTyWidth from < nativeTyWidth to = bitCoerce v "S" from to x
 doOp v (LZExt ITNative (ITFixed to)) [x]
-    = v ++ "idris_b" ++ show (nativeTyWidth to) ++ "const(vm, (uintptr_t)GETINT(" ++ creg x ++ ")"
+    = v ++ "idris_b" ++ show (nativeTyWidth to) ++ "const(vm, (uintptr_t)GETINT(" ++ creg x ++ "))"
 doOp v (LZExt ITChar (ITFixed to)) [x]
     = doOp v (LZExt ITNative (ITFixed to)) [x]
 doOp v (LZExt (ITFixed from) ITNative) [x]
@@ -474,6 +475,7 @@ doOp v LFATan [x] = v ++ flUnOp "atan" (creg x)
 doOp v LFSqrt [x] = v ++ flUnOp "sqrt" (creg x)
 doOp v LFFloor [x] = v ++ flUnOp "floor" (creg x)
 doOp v LFCeil [x] = v ++ flUnOp "ceil" (creg x)
+doOp v LFNegate [x] = v ++ "MKFLOAT(vm, -GETFLOAT(" ++ (creg x) ++ "))"
 
 doOp v LStrHead [x] = v ++ "idris_strHead(vm, " ++ creg x ++ ")"
 doOp v LStrTail [x] = v ++ "idris_strTail(vm, " ++ creg x ++ ")"

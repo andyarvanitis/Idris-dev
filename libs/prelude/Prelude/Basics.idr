@@ -1,7 +1,9 @@
 module Prelude.Basics
 
+import Builtins
+       
 Not : Type -> Type
-Not a = a -> _|_
+Not a = a -> Void
 
 ||| Identity function.
 id : a -> a
@@ -42,7 +44,7 @@ apply f a = f a
 
 ||| Equality is a congruence.
 cong : {f : t -> u} -> (a = b) -> f a = f b
-cong refl = refl
+cong Refl = Refl
 
 ||| Decidability. A decidable property either holds or is a contradiction.
 data Dec : Type -> Type where
@@ -53,5 +55,5 @@ data Dec : Type -> Type where
 
   ||| The case where the property holding would be a contradiction
   ||| @ contra a demonstration that A would be a contradiction
-  No  : {A : Type} -> (contra : A -> _|_) -> Dec A
+  No  : {A : Type} -> (contra : A -> Void) -> Dec A
 
