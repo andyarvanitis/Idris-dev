@@ -9,7 +9,7 @@ import Util.Pretty
 import Idris.AbsSyntax
 import Idris.Core.TT
 import Idris.Core.Evaluate
-import Idris.Docstrings (overview, renderDocstring)
+import Idris.Docstrings (overview, renderDocstring, renderDocTerm)
 import Idris.ErrReverse
 
 import Data.List (intersperse, nub)
@@ -252,6 +252,7 @@ pprintErr' i (Elaborating s n e) = text "When elaborating" <+> text s <>
                                    annName' n (showqual i n) <> colon <$>
                                    pprintErr' i e
 pprintErr' i (ElaboratingArg f x _ e)
+  | isInternal f = pprintErr' i e
   | isUN x =
      text "When elaborating argument" <+>
      annotate (AnnBoundName x False) (text (showbasic x)) <+> -- TODO check plicity
@@ -269,6 +270,11 @@ pprintErr' i (ElaboratingArg f x _ e)
                                    else if isFnName f ctxt
                                            then text "function" <> space
                                            else empty
+        isInternal (MN _ _) = True
+        isInternal (UN n) = T.isPrefixOf (T.pack "__") n
+        isInternal (NS n _) = isInternal n
+        isInternal _ = True
+
 pprintErr' i (ProviderError msg) = text ("Type provider error: " ++ msg)
 pprintErr' i (LoadingFailed fn e) = text "Loading" <+> text fn <+> text "failed:" <+>  pprintErr' i e
 pprintErr' i (ReflectionError parts orig) =
@@ -435,12 +441,14 @@ fancifyAnnots ist annot@(AnnName n _ _ _) =
        _ | otherwise            -> annot
   where docOverview :: IState -> Name -> Maybe String -- pretty-print first paragraph of docs
         docOverview ist n = do docs <- lookupCtxtExact n (idris_docstrings ist)
-                               let o   = overview (fst docs)
+                               let o    = overview (fst docs)
+                                   norm = normaliseAll (tt_ctxt ist) []
                                    -- TODO make width configurable
                                    -- Issue #1588 on the Issue Tracker
                                    -- https://github.com/idris-lang/Idris-dev/issues/1588
-                                   out = displayS . renderPretty 1.0 50 $
-                                         renderDocstring (pprintDelab ist) (normaliseAll (tt_ctxt ist) []) o
+                                   out  = displayS . renderPretty 1.0 50 $
+                                          renderDocstring (renderDocTerm (pprintDelab ist)
+                                                                         norm) o
                                return (out "")
         getTy :: IState -> Name -> String -- fails if name not already extant!
         getTy ist n = let theTy = pprintPTerm (ppOptionIst ist) [] [] (idris_infixes ist) $

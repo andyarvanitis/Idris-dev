@@ -43,10 +43,14 @@ applyAll extra ts ap@(App f a)
     | (P _ fn ty, args) <- unApply ap
          = let rules = case lookupCtxtExact fn ts of
                             Just r -> extra ++ r
-                            Nothing -> extra in
+                            Nothing -> extra 
+               ap' = App (applyAll extra ts f) (applyAll extra ts a) in
                case rules of
-                    [] -> App (applyAll extra ts f) (applyAll extra ts a)
+                    [] -> ap'
                     rs -> case applyFnRules rs ap of
+                                   Just tm'@(App f' a') ->
+                                     App (applyAll extra ts f')
+                                         (applyAll extra ts a')
                                    Just tm' -> tm'
                                    _ -> App (applyAll extra ts f) 
                                             (applyAll extra ts a)

@@ -5,7 +5,7 @@ module Idris.ParseExpr where
 import Prelude hiding (pi)
 
 import Text.Trifecta.Delta
-import Text.Trifecta hiding (span, stringLiteral, charLiteral, natural, symbol, char, string, whiteSpace)
+import Text.Trifecta hiding (span, stringLiteral, charLiteral, natural, symbol, char, string, whiteSpace, Err)
 import Text.Parser.LookAhead
 import Text.Parser.Expression
 import qualified Text.Parser.Token as Tok
@@ -53,11 +53,11 @@ fullExpr syn = do x <- expr syn
                   i <- get
                   return $ debindApp syn (desugar syn i x)
 
-tryFullExpr :: SyntaxInfo -> IState -> String -> Maybe PTerm
+tryFullExpr :: SyntaxInfo -> IState -> String -> Either Err PTerm
 tryFullExpr syn st input =
   case runparser (fullExpr syn) st "" input of
-    Success tm -> Just tm
-    _ -> Nothing
+    Success tm -> Right tm
+    Failure e -> Left (Msg (show e))
 
 {- | Parses an expression
 @
@@ -1021,7 +1021,7 @@ DoBlock ::=
 doBlock :: SyntaxInfo -> IdrisParser PTerm
 doBlock syn
     = do reserved "do"
-         ds <- indentedBlock (do_ syn)
+         ds <- indentedBlock1 (do_ syn)
          return (PDoBlock ds)
       <?> "do block"
 

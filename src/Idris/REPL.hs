@@ -485,7 +485,19 @@ runIdeSlaveCommand h id orig fn mods (IdeSlave.PrintDef name) =
                         [] -> Left ("Didn't understand name '" ++ s ++ "'")
                         [n] -> Right $ sUN n
                         (n:ns) -> Right $ sNS (sUN n) ns
-
+runIdeSlaveCommand h id orig fn modes (IdeSlave.ErrString e) =
+  do ist <- getIState
+     let out = displayS . renderPretty 1.0 60 $ pprintErr ist e
+         msg = (IdeSlave.SymbolAtom "ok", IdeSlave.StringAtom $ out "")
+     runIO . hPutStrLn h $ IdeSlave.convSExp "return" msg id
+runIdeSlaveCommand h id orig fn modes (IdeSlave.ErrPPrint e) =
+  do ist <- getIState
+     let (out, spans) =
+           displaySpans .
+           renderPretty 0.9 80 .
+           fmap (fancifyAnnots ist) $ pprintErr ist e
+         msg = (IdeSlave.SymbolAtom "ok", out, spans)
+     runIO . hPutStrLn h $ IdeSlave.convSExp "return" msg id
 
 -- | Show a term for IDESlave with the specified implicitness
 ideSlaveForceTermImplicits :: Handle -> Integer -> [(Name, Bool)] -> Bool -> Term -> Idris ()
@@ -1441,15 +1453,19 @@ idrisMain opts =
        let importdirs = opt getImportDir opts
        let bcs = opt getBC opts
        let pkgdirs = opt getPkgDir opts
-       let optimize = case opt getOptLevel opts of
+       -- Set default optimisations
+       let optimise = case opt getOptLevel opts of
                         [] -> 2
                         xs -> last xs
+       setOptLevel optimise
        let outty = case opt getOutputTy opts of
                      [] -> Executable
                      xs -> last xs
        let cgn = case opt getCodegen opts of
                    [] -> Via "c"
                    xs -> last xs
+       -- Now set/unset specifically chosen optimisations
+       sequence_ (opt getOptimisation opts)
        script <- case opt getExecScript opts of
                    []     -> return Nothing
                    x:y:xs -> do iputStrLn "More than one interpreter expression found."
@@ -1701,9 +1717,14 @@ getCPU :: Opt -> Maybe String
 getCPU (TargetCPU x) = Just x
 getCPU _ = Nothing
 
-getOptLevel :: Opt -> Maybe Word
+getOptLevel :: Opt -> Maybe Int
 getOptLevel (OptLevel x) = Just x
 getOptLevel _ = Nothing
+
+getOptimisation :: Opt -> Maybe (Idris ())
+getOptimisation (AddOpt p) = Just $ addOptimise p
+getOptimisation (RemoveOpt p) = Just $ removeOptimise p 
+getOptimisation _ = Nothing
 
 getColour :: Opt -> Maybe Bool
 getColour (ColourREPL b) = Just b
