@@ -198,49 +198,25 @@ cppTAILCALL _ n =
   ) [cppVM, CppIdent (translateName n), cppOLDBASE]
 
 cppFOREIGN :: CompileInfo -> Reg -> String -> [(FType, Reg)] -> FType -> Cpp
-cppFOREIGN _ reg n args ret
-  | n == "fileOpen"
-  , [(_, name),(_, mode)] <- args =
-      CppAssign (
-        translateReg reg
-      ) (
-        cppBOX cppManagedPtr $ cppCall "fileOpen" [cppUNBOX cppSTRING $ translateReg name,
-                                                   cppUNBOX cppSTRING $ translateReg mode]
-      )
+cppFOREIGN _ reg n args ret =
+  case n of
+    "fileOpen" -> let [(_, name),(_, mode)] = args in
+                  CppAssign (translateReg reg) 
+                            (cppBOX cppManagedPtr $ cppCall "fileOpen" [cppUNBOX cppSTRING $ translateReg name,
+                                                                        cppUNBOX cppSTRING $ translateReg mode])
+    "fileClose" -> let [(_, fh)] = args in
+                   CppAssign (translateReg reg) (cppCall "fileClose" [cppUNBOX cppManagedPtr $ translateReg fh])
 
-  | n == "fileClose"
-  , [(_, fh)] <- args =
-      CppAssign (
-        translateReg reg
-      ) (
-        cppCall "fileClose" [cppUNBOX cppManagedPtr $ translateReg fh]
-      )
+    "fputStr" -> let [(_, fh),(_, str)] = args in
+                 CppAssign (translateReg reg) (cppCall "fputStr" [cppUNBOX cppManagedPtr $ translateReg fh,
+                                                                      cppUNBOX cppSTRING $ translateReg str])
+    "fileEOF" -> let [(_, fh)] = args in
+                 CppAssign (translateReg reg) (cppBOX cppINT $ cppCall "fileEOF" [cppUNBOX cppManagedPtr $ translateReg fh])
 
-  | n == "fputStr"
-  , [(_, fh),(_, str)] <- args =
-      CppAssign (
-        translateReg reg
-      ) (
-        cppCall "fputStr" [cppUNBOX cppManagedPtr $ translateReg fh, 
-                           cppUNBOX cppSTRING $ translateReg str]
-      )
+    "fileError" -> let [(_, fh)] = args in
+                   CppAssign (translateReg reg) (cppBOX cppINT $ cppCall "fileError" [cppUNBOX cppManagedPtr $ translateReg fh])
 
-  | n == "fileEOF"
-  , [(_, fh)] <- args =
-      CppAssign (
-        translateReg reg
-      ) (
-        cppBOX cppINT $ cppCall "fileEOF" [cppUNBOX cppManagedPtr $ translateReg fh]
-      )
-
-  | n == "fileError"
-  , [(_, fh)] <- args =
-      CppAssign (
-        translateReg reg
-      ) (
-        cppBOX cppINT $ cppCall "fileError" [cppUNBOX cppManagedPtr $ translateReg fh]
-      )
-
+{-
   | n == "isNull"
   , [(_, arg)] <- args =
       CppAssign (
@@ -274,6 +250,7 @@ cppFOREIGN _ reg n args ret
          FUnit -> CppBinOp "," CppNull callexpr
          _     -> cppBOX (T.unpack . compileCpp $ foreignToBoxed ret) $ callexpr
      )
+-}
     where
       generateWrapper :: (FType, Reg) -> Cpp
       generateWrapper (ty, reg) =
