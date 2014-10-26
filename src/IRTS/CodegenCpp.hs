@@ -1,5 +1,3 @@
-{-# LANGUAGE PatternGuards #-}
-
 module IRTS.CodegenCpp (codegenCpp) where
 
 import Idris.AbsSyntax hiding (TypeCase)
@@ -216,41 +214,19 @@ cppFOREIGN _ reg n args ret =
     "fileError" -> let [(_, fh)] = args in
                    CppAssign (translateReg reg) (cppBOX cppINT $ cppCall "fileError" [cppUNBOX cppManagedPtr $ translateReg fh])
 
-{-
-  | n == "isNull"
-  , [(_, arg)] <- args =
-      CppAssign (
-        translateReg reg
-      ) (
-        cppBOX cppBOOL $ CppBinOp "==" (translateReg arg) CppNull
-      )
+    "isNull" -> let [(_, arg)] = args in
+                CppAssign (translateReg reg) (cppBOX cppBOOL $ CppBinOp "==" (translateReg arg) CppNull)
 
-  | n == "idris_eqPtr"
-  , [(_, lhs),(_, rhs)] <- args =
-      CppAssign (
-        translateReg reg
-      ) (
-        CppBinOp "==" (translateReg lhs) (translateReg rhs)
-      )
+    "idris_eqPtr" -> let [(_, lhs),(_, rhs)] = args in
+                  CppAssign (translateReg reg) (CppBinOp "==" (translateReg lhs) (translateReg rhs))
 
-  | n == "getenv"
-  , [(_, arg)] <- args =
-      CppAssign (
-        translateReg reg
-      ) (
-        cppBOX cppSTRING $ cppCall "getenv" [cppMeth (cppUNBOX cppSTRING $ translateReg arg) "c_str" []]
-      )
+    "getenv" -> let [(_, arg)] = args in
+                CppAssign (translateReg reg) (cppBOX cppSTRING $ cppCall "getenv" [cppMeth (cppUNBOX cppSTRING $ translateReg arg) "c_str" []])
 
-  | otherwise =
-     CppAssign (
-       translateReg reg
-     ) (
-       let callexpr = CppFFI n (map generateWrapper args) in
-       case ret of
-         FUnit -> CppBinOp "," CppNull callexpr
-         _     -> cppBOX (T.unpack . compileCpp $ foreignToBoxed ret) $ callexpr
-     )
--}
+    _ -> CppAssign (translateReg reg) (let callexpr = CppFFI n (map generateWrapper args) in
+                                       case ret of
+                                         FUnit -> CppBinOp "," CppNull callexpr
+                                         _     -> cppBOX (T.unpack . compileCpp $ foreignToBoxed ret) $ callexpr)
     where
       generateWrapper :: (FType, Reg) -> Cpp
       generateWrapper (ty, reg) =
@@ -299,10 +275,9 @@ cppSTOREOLD :: CompileInfo ->Cpp
 cppSTOREOLD _ = CppAssign cppMYOLDBASE cppSTACKBASE
 
 cppADDTOP :: CompileInfo -> Int -> Cpp
-cppADDTOP info n
-  | 0 <- n    = CppNoop
-  | otherwise =
-      CppBinOp "+=" cppSTACKTOP (CppNum (CppInt n))
+cppADDTOP info n = case n of
+                     0 -> CppNoop
+                     _ -> CppBinOp "+=" cppSTACKTOP (CppNum (CppInt n))
 
 cppTOPBASE :: CompileInfo -> Int -> Cpp
 cppTOPBASE _ 0  = CppAssign cppSTACKTOP cppSTACKBASE
