@@ -5,6 +5,7 @@ module IRTS.Cpp.AST where
 import Data.Word
 import Data.Char (isDigit)
 import Data.List (intersperse)
+import Data.Int
 
 import qualified Data.Text as T
 
@@ -17,17 +18,14 @@ data CppType = CppIntTy
             | CppForgotTy
             deriving Eq
 
-
 data CppInteger = CppBigInt Integer
                | CppBigIntExpr Cpp
                deriving Eq
-
 
 data CppNum = CppInt Int
            | CppFloat Double
            | CppInteger CppInteger
            deriving Eq
-
 
 data CppWord = CppWord8 Word8
             | CppWord16 Word16
@@ -35,13 +33,10 @@ data CppWord = CppWord8 Word8
             | CppWord64 Word64
             deriving Eq
 
-
 data CppAnnotation = CppConstructor deriving Eq
-
 
 instance Show CppAnnotation where
   show CppConstructor = "class"
-
 
 data Cpp = CppRaw String
         | CppIdent String
@@ -80,7 +75,6 @@ data Cpp = CppRaw String
         | CppAnnotation CppAnnotation Cpp
         | CppNoop
         deriving Eq
-
 
 data FFI = FFICode Char | FFIArg Int | FFIError String
 
@@ -207,7 +201,7 @@ compileCpp' indent (CppPreOp op val) =
   T.pack op `T.append` compileCpp' indent val
 
 compileCpp' indent (CppPostOp op val) =
-  compileCpp' indent val `T.append` T.pack op 
+  compileCpp' indent val `T.append` T.pack op
 
 compileCpp' indent (CppProj obj field)
   | CppFunction {} <- obj =
@@ -249,13 +243,17 @@ compileCpp' indent (CppString str) =
 compileCpp' indent (CppChar c) =
   "'" `T.append` T.pack c `T.append` "'"
 
-compileCpp' indent (CppNum num)
-  -- | CppInt 0                    <- num = T.pack "(int)0"
-  | CppInt i                    <- num = T.pack (show i)
-  | CppFloat f                  <- num = T.pack (show f)
-  -- | CppInteger (CppBigInt 0)     <- num = T.pack "(int)0"
-  | CppInteger (CppBigInt i)     <- num = T.pack (show i)
-  | CppInteger (CppBigIntExpr e) <- num = compileCpp' indent e
+compileCpp' indent (CppNum num) =
+  case num of
+    CppInt i                     -> T.pack (show i)
+    CppFloat f                   -> T.pack (show f)
+    CppInteger (CppBigInt i)     -> T.pack $ big i
+    CppInteger (CppBigIntExpr e) -> compileCpp' indent e
+  where
+    big :: Integer -> String
+    big i
+      | i > (toInteger (maxBound::Int)) || i < (toInteger (minBound::Int)) = "asBig(" ++ (show i) ++ ")"
+      | otherwise = show i
 
 compileCpp' indent (CppAssign lhs rhs) =
   compileCpp' indent lhs `T.append` " = " `T.append` compileCpp' indent rhs
@@ -269,7 +267,7 @@ compileCpp' 0 (CppAlloc _ name (Just val@(CppNew _ _))) =
 compileCpp' indent (CppAlloc typename name val) =
     case val of Nothing   -> typ `T.append` T.pack name
                 Just expr -> typ `T.append` T.pack name `T.append` " = " `T.append` compileCpp' indent expr
-                where 
+                where
                   typ = case typename of Nothing -> T.pack "auto "
                                          Just t  -> T.pack (t ++ " ")
     -- let expr = maybe "" (compileCpp' indent) val
@@ -360,10 +358,10 @@ compileCpp' indent (CppWhile cond body) =
   `T.append` "\n" `T.append` T.replicate indent " " `T.append` "}"
 
 compileCpp' indent (CppWord word)
-  | CppWord8  b <- word = compileCpp' indent (CppPostOp "u" (fromInt b))
-  | CppWord16 b <- word = compileCpp' indent (CppPostOp "u" (fromInt b))
-  | CppWord32 b <- word = compileCpp' indent (CppPostOp "u" (fromInt b))
-  | CppWord64 b <- word = compileCpp' indent (CppPostOp "u" (fromBigInt b))
+  | CppWord8  b <- word = compileCpp' indent (fromInt b)
+  | CppWord16 b <- word = compileCpp' indent (fromInt b)
+  | CppWord32 b <- word = compileCpp' indent (fromInt b)
+  | CppWord64 b <- word = compileCpp' indent (fromBigInt b)
     where
       fromInt n = CppNum $ CppInt (fromIntegral n)
       fromBigInt n = CppNum . CppInteger . CppBigInt $ fromIntegral n

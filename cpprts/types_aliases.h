@@ -8,14 +8,6 @@ namespace idris {
 
 using namespace std;
 
-#if defined(__GNUC__) && UINTPTR_MAX == 0xffffffffffffffff
-  using bigint_t = __int128_t;
-#else
-  #warning "Inadequate big int support detected!"
-  using bigint_t = long long;
-#endif
-
-
 using Int        = TypedBoxedValue<'i', int>;
 using BigInt     = TypedBoxedValue<'b', bigint_t>;
 using Float      = TypedBoxedValue<'f', double>;

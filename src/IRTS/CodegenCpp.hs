@@ -46,7 +46,7 @@ codegenCpp ci =
       mkFlag l = l ++ " "
       incdir i = "-I" ++ i ++ " "
 
-codegenCpp_all :: 
+codegenCpp_all ::
      [(Name, SDecl)] -> -- declarations/definitions
      OutputType ->      -- output type
      FilePath ->        -- output file name
@@ -61,8 +61,8 @@ codegenCpp_all definitions outputType filename includes objs libs flags dbg = do
   let bytecode = map toBC definitions
   let decls = concatMap toDecl (map fst bytecode)
   let cpp = concatMap (toCpp (CompileInfo True)) bytecode
-  let (header, rt) = ("", "")  
-  path <- (++) <$> getDataDir <*> (pure "/cpprts/")                
+  let (header, rt) = ("", "")
+  path <- (++) <$> getDataDir <*> (pure "/cpprts/")
   let cppout = (  T.pack (headers includes)
                   `T.append` namespaceBegin
                   `T.append` T.pack decls
@@ -99,7 +99,7 @@ codegenCpp_all definitions outputType filename includes objs libs flags dbg = do
               putStrLn ("FAILURE: " ++ cc)
     where
       headers xs = concatMap (\h -> let header = case h of ('<':_) -> h
-                                                           _ -> "\"" ++ h ++ "\"" in                                                      
+                                                           _ -> "\"" ++ h ++ "\"" in
                                     "#include " ++ header ++ "\n")
                              (xs ++ ["idris_runtime.h"])
 
@@ -116,7 +116,7 @@ codegenCpp_all definitions outputType filename includes objs libs flags dbg = do
 
       ccDbg DEBUG = "-g"
       ccDbg TRACE = "-O2"
-      ccDbg _ = "-O2"      
+      ccDbg _ = "-O2"
 
       toDecl :: Name -> String
       toDecl f = "void " ++ translateName f ++ "(" ++ (intercalate ", " cppFUNCPARMS) ++ ");\n"
@@ -156,8 +156,6 @@ translateConstant (AType ATFloat)          = CppType CppFloatTy
 translateConstant (AType (ATInt ITChar))   = CppType CppCharTy
 translateConstant PtrType                  = CppType CppPtrTy
 translateConstant Forgot                   = CppType CppForgotTy
-translateConstant (BI 0)                   = CppNum $ CppInteger (CppBigInt 0)
-translateConstant (BI 1)                   = CppNum $ CppInteger (CppBigInt 1)
 translateConstant (BI i)                   = CppNum $ CppInteger (CppBigInt i)
 translateConstant (B8 b)                   = CppWord (CppWord8 b)
 translateConstant (B16 b)                  = CppWord (CppWord16 b)
@@ -199,7 +197,7 @@ cppFOREIGN :: CompileInfo -> Reg -> String -> [(FType, Reg)] -> FType -> Cpp
 cppFOREIGN _ reg n args ret =
   case n of
     "fileOpen" -> let [(_, name),(_, mode)] = args in
-                  CppAssign (translateReg reg) 
+                  CppAssign (translateReg reg)
                             (cppBOX cppManagedPtr $ cppCall "fileOpen" [cppUNBOX cppSTRING $ translateReg name,
                                                                         cppUNBOX cppSTRING $ translateReg mode])
     "fileClose" -> let [(_, fh)] = args in
@@ -232,10 +230,10 @@ cppFOREIGN _ reg n args ret =
       generateWrapper (ty, reg) =
         case ty of
           FFunction aty rty ->
-            CppApp (CppIdent $ "LAMBDA_WRAPPER") [translateReg reg, cType aty, cType rty]            
+            CppApp (CppIdent $ "LAMBDA_WRAPPER") [translateReg reg, cType aty, cType rty]
           FFunctionIO -> error "FFunctionIO not supported yet"
           _ -> cppUNBOX (T.unpack . compileCpp $ foreignToBoxed ty) $ translateReg reg
-        
+
       cType :: FType -> Cpp
       cType (FArith (ATInt ITNative))       = CppIdent "int"
       cType (FArith (ATInt ITChar))         = CppIdent "char"
@@ -301,9 +299,9 @@ cppMKCON :: CompileInfo -> Reg -> Int -> [Reg] -> Cpp
 cppMKCON info r t rs =
   CppAssign (translateReg r) (
     cppBOX cppCON $ CppList $ CppNum (CppInt t) : args rs
-  ) 
+  )
     where
-      args [] = []        
+      args [] = []
       args xs = [CppList (map translateReg xs)]
 
 cppCASE :: CompileInfo -> Bool -> Reg -> [(Int, [BC])] -> Maybe [BC] -> Cpp
@@ -338,7 +336,7 @@ cppCONSTCASE info reg cases def =
 
       unboxedBinOp :: (Cpp -> Cpp -> Cpp) -> Cpp -> Cpp -> Cpp
       unboxedBinOp f l r = f (cppUNBOX (unboxedType r) l) r
-      
+
 cppPROJECT :: CompileInfo -> Reg -> Int -> Int -> Cpp
 cppPROJECT _ reg loc 0  = CppNoop
 cppPROJECT _ reg loc 1  =
@@ -361,8 +359,8 @@ cppOP _ reg oper args = CppAssign (translateReg reg) (cppOP' oper)
       case op of
         LNoOp -> translateReg (last args)
 
-        (LZExt ty ITNative) -> cppBOX cppINT    $ cppUNBOX (cppAType (ATInt ty)) $ translateReg (last args)
-        (LZExt ty ITBig)    -> cppBOX cppBIGINT $ cppUNBOX (cppAType (ATInt ty)) $ translateReg (last args)
+        (LZExt sty dty) -> cppBOX (cppAType (ATInt dty)) $ cppUNBOX (cppAType (ATInt sty)) $ translateReg (last args)
+
 
         (LPlus ty) -> cppBOX (cppAType ty) $ CppBinOp "+" (cppUNBOX (cppAType ty) $ translateReg lhs)
                                                           (cppUNBOX (cppAType ty) $ translateReg rhs)
@@ -467,14 +465,14 @@ cppOP _ reg oper args = CppAssign (translateReg reg) (cppOP' oper)
 
         LStrCons -> cppBOX cppSTRING $ CppBinOp "+" (cppAsString $ translateReg lhs)
                                                               (cppUNBOX cppSTRING $ translateReg rhs)
-        LStrHead -> let str = cppUNBOX cppSTRING $ translateReg arg in      
+        LStrHead -> let str = cppUNBOX cppSTRING $ translateReg arg in
                       CppTernary (cppAnd (translateReg arg) (CppPreOp "!" (cppMeth str "empty" [])))
                                  (cppBOX cppCHAR $ cppCall "utf8_head" [str])
                                  CppNull
 
         LStrRev     -> cppBOX cppSTRING $ cppCall "reverse" [cppUNBOX cppSTRING $ translateReg arg]
 
-        LStrIndex   -> cppBOX cppCHAR $ cppCall "char32_from_utf8_string" [cppUNBOX cppSTRING $ translateReg lhs, 
+        LStrIndex   -> cppBOX cppCHAR $ cppCall "char32_from_utf8_string" [cppUNBOX cppSTRING $ translateReg lhs,
                                                                                 cppAsIntegral $ translateReg rhs]
         LStrTail    -> let str = cppUNBOX cppSTRING $ translateReg arg in
                          CppTernary (cppAnd (translateReg arg) (cppGreaterThan (strLen str) cppOne))
@@ -495,7 +493,7 @@ cppOP _ reg oper args = CppAssign (translateReg reg) (cppOP' oper)
           invokeMeth :: Reg -> String -> [Reg] -> Cpp
           invokeMeth obj meth args =
             CppApp (CppProj (translateReg obj) meth) $ map translateReg args
-            
+
           strLen :: Cpp -> Cpp
           strLen s = cppMeth s "length" []
 
@@ -568,7 +566,7 @@ cppUNBOX :: String -> Cpp -> Cpp
 cppUNBOX typ obj = CppApp (CppIdent $ "unbox" ++ "<" ++ typ ++ ">") [obj]
 
 unboxedType :: Cpp -> String
-unboxedType e = case e of 
+unboxedType e = case e of
                   (CppString _)                       -> cppSTRING
                   (CppNum (CppFloat _))               -> cppFLOAT
                   (CppNum (CppInteger (CppBigInt _))) -> cppBIGINT

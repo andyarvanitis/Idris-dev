@@ -15,10 +15,26 @@
     using ubigint_t = __uint128_t;
     std::ostream& operator << (std::ostream&, bigint_t);
     std::ostream& operator << (std::ostream&, bigint_t);
+
+    // Convert string literal to big int literal at compile time
+    //
+    #define asBig(n) asBig_entry(#n)
+    constexpr bigint_t asBig_recurse(const char* str, const bigint_t num, const bool neg) {
+      return (*str == '\0' ? (neg ? -num : num) 
+                           : asBig_recurse(str+1, 10 * num + (*str - '0'), neg));
+    }
+    constexpr bigint_t asBig_entry(const char* str) {
+      return asBig_recurse(*str == '-' ? str+1 : str, 0, *str == '-');
+    }
   } // namespace idris
+
 #else
   #warning "Inadequate big integer support detected! (using long long)"
-  using bigint_t = long long;
+  namespace idris {
+    using bigint_t = long long;
+    #define asBig(n) n
+  } // namespace idris
+
 #endif
 
 #endif // __idris_bigint_h_
