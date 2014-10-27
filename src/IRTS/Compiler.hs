@@ -8,7 +8,6 @@ import IRTS.Defunctionalise
 import IRTS.Simplified
 import IRTS.CodegenCommon
 import IRTS.CodegenC
-import IRTS.CodegenJava
 import IRTS.DumpBC
 import IRTS.CodegenJavaScript
 import IRTS.CodegenCpp
@@ -122,7 +121,6 @@ generate codegen mainmod ir
   = case codegen of
        -- Built-in code generators (FIXME: lift these out!)
        Via "c" -> codegenC ir 
-       Via "java" -> codegenJava ir 
        Via "cpp" -> codegenCpp ir
        -- Any external code generator
        Via cg -> do let cmd = "idris-" ++ cg ++ " " ++ mainmod ++
