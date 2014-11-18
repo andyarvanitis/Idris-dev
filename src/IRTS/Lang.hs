@@ -90,7 +90,7 @@ data FLang = LANG_C | LANG_JAVA FCallType
 
 data FType = FArith ArithTy
            | FFunction FType FType
-           | FFunctionIO
+           | FFunctionIO FType FType
            | FString
            | FUnit
            | FPtr

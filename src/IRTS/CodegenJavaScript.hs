@@ -571,7 +571,7 @@ jsFOREIGN _ reg n args
                                         , JSIdent "oldbase"
                                         , JSIdent "myoldbase"
                                         ]
-        | FFunctionIO <- ty =
+        | FFunctionIO _ _ <- ty =
             JSApp (JSIdent "i$ffiWrap") [ translateReg reg
                                         , JSIdent "oldbase"
                                         , JSIdent "myoldbase"
