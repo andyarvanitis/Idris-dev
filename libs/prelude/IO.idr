@@ -38,7 +38,6 @@ data IntTy = ITChar | ITNative | IT8 | IT16 | IT32 | IT64 | IT8x16 | IT16x8 | IT
 ||| Types available for foreign function calls
 data FTy = FIntT IntTy
          | FFunction FTy FTy
-         | FFunctionIO FTy FTy
          | FFloat
          | FString
          | FPtr
@@ -105,7 +104,6 @@ interpFTy (FIntT IT64x2)   = Bits64x2
 interpFTy FUnit            = ()
 
 interpFTy (FFunction a b) = interpFTy a -> interpFTy b
-interpFTy (FFunctionIO a b) = interpFTy a -> IO (interpFTy b)
 
 ||| Type signatures for foreign functions
 ||| @ xs the argument types

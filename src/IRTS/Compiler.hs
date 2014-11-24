@@ -458,21 +458,20 @@ doForeign vs env (_ : fgn : args)
         | fi == txt "FIntT"
         = mkIntIty (str intTy)
 
-    mkIty' (App (App (P _ (UN ff) _) _) (App (P _ (UN fa) _) (App (P _ (UN io) _) _))) 
+    mkIty' (App (App (P _ (UN ff) _) aty) (App (P _ (UN fa) _) (App (P _ (UN io) _) rty)))
         | ff == txt "FFunction"
         , fa == txt "FAny"
         , io == txt "IO" 
-        = FFunctionIO FUnit FUnit
+        = FFunctionIO (mkIty' aty) rty'
+          where rty'
+                  | (P _ (UN n) _) <- rty, n == txt "Unit" = FUnit
+                  | otherwise                              = mkIty' rty
 
     mkIty' (App (App (P _ (UN ff) _) aty) rty)
         | ff == txt "FFunction"
         = FFunction (mkIty' aty) (mkIty' rty)
 
-    mkIty' (App (App (P _ (UN ff) _) aty) rty)
-        | ff == txt "FFunctionIO"
-        = FFunctionIO (mkIty' aty) (mkIty' rty)
-
-    mkIty' _ = FAny
+    mkIty' a = FAny a
 
     -- would be better if these FInt types were evaluated at compile time
     -- TODO: add %eval directive for such things

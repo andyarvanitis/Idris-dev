@@ -95,7 +95,7 @@ data FType = FArith ArithTy
            | FUnit
            | FPtr
            | FManagedPtr
-           | FAny
+           | FAny Type
   deriving (Show, Eq)
 
 -- FIXME: Why not use this for all the IRs now?
